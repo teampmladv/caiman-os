@@ -144,19 +144,19 @@ pub fn load_bzimage(
 
     // Verificar magic numbers
     if header.boot_flag != BOOT_MAGIC {
-        bail!("Invalid boot magic: {:#x} (expected {:#x})", header.boot_flag, BOOT_MAGIC);
+        { let bf = header.boot_flag; bail!("Invalid boot magic: {:#x} (expected {:#x})", bf, BOOT_MAGIC); }
     }
-    if header.header != HDR_MAGIC {
+    if { header.header } != HDR_MAGIC {
         bail!("Not a valid bzImage (HdrS magic missing)");
     }
 
-    let proto_ver = header.version;
+    let proto_ver = { header.version };
     if proto_ver < 0x0202 {
         bail!("Boot protocol {:#x} too old — need >= 2.02", proto_ver);
     }
 
-    debug!("Boot protocol: {:#x}", proto_ver);
-    debug!("Kernel loadflags: {:#b}", header.loadflags);
+    debug!("Boot protocol: {:#x}", proto_ver);  // proto_ver is a copy, safe
+    debug!("Kernel loadflags: {:#b}", { header.loadflags });
 
     let is_bzimage = header.loadflags & LOADED_HIGH != 0;
     if !is_bzimage {
@@ -176,10 +176,10 @@ pub fn load_bzimage(
     let kernel_size = kernel_data.len() as u64;
 
     // ── 3. Copiar kernel a 1 MiB en la memoria del guest ─────────────────
-    let load_addr = if header.relocatable_kernel != 0 {
+    let load_addr = if { header.relocatable_kernel } != 0 {
         // Kernel relocatable: usar dirección preferida o KERNEL_LOAD_ADDR
         std::cmp::max(
-            header.pref_address,
+            { header.pref_address },
             KERNEL_LOAD_ADDR,
         )
     } else {
@@ -201,8 +201,8 @@ pub fn load_bzimage(
         let size = initrd_data.len() as u64;
 
         // Poner el initrd debajo del límite initrd_addr_max, alineado a 4K
-        let max_addr = if header.initrd_addr_max > 0 {
-            header.initrd_addr_max as u64
+        let max_addr = if { header.initrd_addr_max } > 0 {
+            { header.initrd_addr_max } as u64
         } else {
             0x3800_0000  // 896 MiB default
         };
@@ -271,7 +271,7 @@ struct BootParams {
     _pad1:          [u8; 8],        // 0x1E9 – 0x1F0
     // Offset 0x1F1: setup header (copiamos del bzImage)
     hdr:            BootHeader,     // 0x1F1 – ~0x268
-    _pad2:          [u8; 0x290 - (0x1F1 + std::mem::size_of::<BootHeader>())],
+    _pad2:          [u8; 0],  // padding handled by packed repr
     // 0x290: E820 memory map (máximo 128 entradas × 20 bytes)
     e820_table:     [E820Entry; 128],
 }
@@ -287,7 +287,7 @@ fn build_boot_params(
         e820_entries: 0,
         _pad1:        [0u8; 8],
         hdr:          *hdr,
-        _pad2:        [0u8; _],
+        _pad2:        [],
         e820_table:   [E820Entry::default(); 128],
     };
 

@@ -85,12 +85,14 @@ impl VirtioBlk {
         }
 
         let hdr: BlkReqHeader = unsafe {
-            *( header_bytes.as_ptr() as *const BlkReqHeader )
+            std::ptr::read_unaligned(header_bytes.as_ptr() as *const BlkReqHeader)
         };
+        // Copy packed fields to local vars to avoid unaligned reference
+        let req_type = hdr.req_type;
+        let sector   = hdr.sector;
+        let offset   = sector * SECTOR_SIZE;
 
-        let offset = hdr.sector * SECTOR_SIZE;
-
-        match hdr.req_type {
+        match req_type {
             VIRTIO_BLK_T_IN => {
                 // READ: leer del disco → data buffer
                 match self.image.read_at(data, offset) {
@@ -141,7 +143,7 @@ impl VirtioBlk {
             }
 
             _ => {
-                warn!("VirtioBlk: unsupported request type {}", hdr.req_type);
+                warn!("VirtioBlk: unsupported request type {}", req_type);
                 VIRTIO_BLK_S_UNSUPP
             }
         }
