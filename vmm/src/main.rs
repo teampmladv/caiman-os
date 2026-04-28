@@ -76,12 +76,15 @@ async fn run(args: Args) -> Result<()> {
         boot_params_addr: kvm::loader::ZERO_PAGE_ADDR,
     };
 
+    // Wrap mem in Arc early so it can be shared between vCPUs and dataplane
+    let mem_arc = Arc::new(mem);
+
     let vnet_state = Arc::clone(&vnet.state);
     let handles: Vec<_> = (0..args.cpus)
         .map(|id| {
             let s  = Arc::clone(&serial);
             let vs = Arc::clone(&vnet_state);
-            kvm::vcpu::Vcpu::new(&vm, id as u64, &mem, &load)
+            kvm::vcpu::Vcpu::new(&vm, id as u64, &*mem_arc, &load)
                 .map(|vcpu| vcpu.run(s, vs))
         })
         .collect::<Result<_>>()?;
@@ -90,7 +93,6 @@ async fn run(args: Args) -> Result<()> {
     println!("─────────────────────────────────────────────────────");
 
     // ── 5. virtio-net TAP dataplane ───────────────────────────────────────
-    let mem_arc = Arc::new(mem);
     vnet.start_dataplane(&args.tap, Arc::clone(&mem_arc))?;
     info!("virtio-net dataplane started on TAP '{}'", args.tap);
 

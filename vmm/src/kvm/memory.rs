@@ -62,7 +62,7 @@ impl GuestMemory {
     }
 
     /// Escribir un slice de bytes en una dirección guest.
-    pub fn write_slice(&mut self, data: &[u8], guest_addr: u64) -> Result<()> {
+    pub fn write_slice(&self, data: &[u8], guest_addr: u64) -> Result<()> {
         let region = self.region_for(guest_addr, data.len())?;
         let offset  = (guest_addr - region.guest_addr) as usize;
         unsafe {
