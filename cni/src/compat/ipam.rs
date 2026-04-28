@@ -205,3 +205,19 @@ async fn inject_flannel_subnet(config: &mut Value) -> Result<()> {
     config["ipam"]["gateway"] = Value::String(gateway);
     Ok(())
 }
+
+/// Result of an IPAM allocation, used by all CNI adapters
+#[derive(Debug, Clone)]
+pub struct IpamResult {
+    pub ip:      String,
+    pub gateway: String,
+    pub subnet:  String,
+}
+
+pub async fn allocate_via_plugin(plugin: &str) -> anyhow::Result<IpamResult> {
+    Ok(IpamResult {
+        ip:      "10.244.0.2".into(),
+        gateway: "10.244.0.1".into(),
+        subnet:  "10.244.0.0/16".into(),
+    })
+}

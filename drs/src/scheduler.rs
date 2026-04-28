@@ -30,7 +30,7 @@ use crate::types::DrsConfig;
 
 // ── Kubernetes extender wire types ─────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ExtenderArgs {
     #[serde(rename = "Pod")]
     pub pod:   serde_json::Value,
@@ -40,7 +40,7 @@ pub struct ExtenderArgs {
     pub node_names: Option<Vec<String>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct NodeList {
     pub items: Vec<serde_json::Value>,
 }

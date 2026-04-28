@@ -26,7 +26,7 @@
 //!   └─────────────────────────────────────────────────────┘
 
 use std::sync::Arc;
-use axum::{Router, middleware};
+use axum::Router;
 use tokio::sync::broadcast;
 use tower_http::{cors::CorsLayer, trace::TraceLayer, compression::CompressionLayer};
 use tracing::info;

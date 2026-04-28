@@ -98,11 +98,11 @@ impl Serial {
                 }
             }
             1 => if self.dlab { self.dlm } else { self.ier }
-            2 => self.iir
+            2 => self.iir,
             3 => self.lcr
-            4 => self.mcr
+            4 => self.mcr,
             5 => self.lsr
-            6 => self.msr
+            6 => self.msr,
             7 => self.scr
             _ => 0xFF
         }

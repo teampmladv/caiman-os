@@ -1,0 +1,1 @@
+//! storage — stub module

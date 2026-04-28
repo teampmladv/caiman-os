@@ -116,7 +116,7 @@ async fn collect_local_node(cfg: &DrsConfig) -> anyhow::Result<NodeMetrics> {
 
     // CPU
     let cpu_cores   = sys.cpus().len() as u32;
-    let cpu_usage   = sys.global_cpu_usage() as f64;
+    let cpu_usage   = { let cpus = sys.cpus(); if cpus.is_empty() { 0.0 } else { cpus.iter().map(|c| c.cpu_usage() as f64).sum::<f64>() / cpus.len() as f64 } };
 
     // Memory
     let mem_total   = sys.total_memory() / (1024 * 1024);
