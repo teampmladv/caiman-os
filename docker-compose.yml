@@ -1,0 +1,93 @@
+services:
+
+  caiman-api:
+    image: ghcr.io/teampmladv/caiman-api:latest
+    container_name: caiman-api
+    restart: unless-stopped
+    ports:
+      - "8765:8765"   # REST + WebSocket
+      - "9090:9090"   # Prometheus metrics
+    environment:
+      - CAIMAN_STATE_DIR=/var/run/caiman
+      - CAIMAN_UPLINK=eth0
+      - DATABASE_URL=sqlite:///var/lib/caiman/caiman.db
+      - RUST_LOG=caiman_api=info
+    volumes:
+      - caiman-state:/var/run/caiman
+      - caiman-data:/var/lib/caiman
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    privileged: true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caiman-ui:
+    image: ghcr.io/teampmladv/caiman-ui:latest
+    container_name: caiman-ui
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://caiman-api:8765
+    depends_on:
+      caiman-api:
+        condition: service_healthy
+
+  caiman-drs:
+    image: ghcr.io/teampmladv/caiman-drs:latest
+    container_name: caiman-drs
+    restart: unless-stopped
+    ports:
+      - "8766:8765"
+    environment:
+      - CAIMAN_DRS__MODE=FullyAutomated
+      - CAIMAN_DRS__IMBALANCE_THRESHOLD=0.10
+      - CAIMAN_DRS__MONITOR_INTERVAL_SECS=30
+      - RUST_LOG=caiman_drs=info
+    depends_on:
+      - caiman-api
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: caiman-prometheus
+    restart: unless-stopped
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: caiman-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=caiman
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  caiman-state:
+  caiman-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  default:
+    name: caiman-network

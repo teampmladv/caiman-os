@@ -1,0 +1,21 @@
+# ── caiman-mcp ──────────────────────────────────────────────────────────────────
+# Imagen mínima: copia el binario pre-compilado localmente con:
+#   cargo build --release -p caiman-mcp
+#   ./publish-images.sh 0.1.0 --push
+FROM debian:bookworm-slim
+
+LABEL org.opencontainers.image.title="caiman-mcp"
+LABEL org.opencontainers.image.source="https://github.com/teampmladv/caiman-os"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+    libssl3 libsqlite3-0 ca-certificates iproute2 curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Binario pre-compilado (generado por: cargo build --release -p caiman-mcp)
+COPY target/release/caiman-mcp /usr/local/bin/caiman-mcp
+RUN chmod +x /usr/local/bin/caiman-mcp
+
+RUN mkdir -p /var/run/caiman /var/lib/caiman
+
+ENTRYPOINT ["/usr/local/bin/caiman-mcp"]
