@@ -122,10 +122,10 @@ export function useContextShortcuts() {
 // ── Shortcut help tooltip data ────────────────────────────────────────────
 
 export const SHORTCUT_HELP = Object.values(ACTIONS)
-  .filter(a => a.shortcut)
+  .filter((a: any) => a.shortcut)
   .map(a => ({
     label:    a.label,
-    shortcut: a.shortcut!,
+    shortcut: (a as any).shortcut!,
     category: a.category,
   }))
   .sort((a, b) => a.category.localeCompare(b.category))

@@ -6,7 +6,7 @@ import { NodeCard } from '../components/nodes/NodeCard'
 import { VmRow } from '../components/vm/VmRow'
 import { DrsPanel } from '../components/drs/DrsPanel'
 import { MicrosegPanel } from '../components/microseg/MicrosegPanel'
-import { ActivityFeed } from '../components/dashboard/ActivityFeed'
+import { ActivityFeed } from '../components/ui/ActivityFeed'
 
 const FADE = (i: number) => ({
   initial: { opacity: 0, y: 8 },

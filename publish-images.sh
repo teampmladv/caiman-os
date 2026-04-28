@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 BRT='\033[38;2;118;255;3m'; GRN='\033[38;2;76;175;80m'
 DIM='\033[38;2;74;124;74m'; AMB='\033[38;2;255;179;0m'
@@ -135,7 +136,7 @@ echo -e "${BRT}━━ Docker build${NC}"
 FAILED=()
 
 for img in "${IMAGES[@]}"; do
-    DOCKERFILE="$(dirname "$0")/docker/Dockerfile.${img}"
+    DOCKERFILE="${SCRIPT_DIR}/docker/Dockerfile.${img}"
     [[ ! -f "$DOCKERFILE" ]] && \
         { echo -e "  ${AMB}⚠ $img: sin Dockerfile, saltando${NC}"; continue; }
 
