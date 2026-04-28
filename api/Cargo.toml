@@ -1,6 +1,6 @@
 [package]
 name        = "caiman-api"
-version     = "0.5.0"
+version     = "0.7.0"
 edition     = "2021"
 description = "Caimán OS — REST API + WebSocket"
 license     = "Apache-2.0"
@@ -24,3 +24,4 @@ sysinfo      = "0.30"
 tokio-stream = "0.1"
 futures      = "0.3"
 libc = "0.2"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }

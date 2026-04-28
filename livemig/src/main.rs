@@ -35,6 +35,7 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
+mod proto;
 mod memory;
 mod network;
 mod storage;

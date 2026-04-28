@@ -188,6 +188,34 @@ async fn health() -> Json<Value> {
 
 // ── Main ──────────────────────────────────────────────────────────────────
 
+async fn migrate_vm(
+    Path(id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let dest = body.get("destination")
+        .and_then(|v| v.as_str())
+        .unwrap_or("localhost")
+        .to_string();
+
+    // Spawn caiman-livemig as subprocess
+    let status = tokio::process::Command::new("caiman-livemig")
+        .args(["--vm-id", &id, "--destination", &dest])
+        .status()
+        .await;
+
+    match status {
+        Ok(s) if s.success() =>
+            ok(serde_json::json!({"status": "migrated", "destination": dest})).into_response(),
+        Ok(s) =>
+            err(StatusCode::INTERNAL_SERVER_ERROR,
+                format!("migration failed with exit code {:?}", s.code())).into_response(),
+        Err(e) =>
+            err(StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to spawn caiman-livemig: {e}")).into_response(),
+    }
+}
+
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -206,6 +234,7 @@ async fn main() {
         .route("/api/vms/:id/start",          post(start_vm))
         .route("/api/vms/:id/stop",           post(stop_vm_handler))
         .route("/api/vms/:id/force-stop",     post(force_stop_vm))
+        .route("/api/vms/:id/migrate",        post(migrate_vm))
         .route("/api/vms/:id/console",        get(vm_logs))
         // Cluster
         .route("/api/cluster",               get(get_cluster))
