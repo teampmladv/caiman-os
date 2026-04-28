@@ -201,49 +201,53 @@ fn handle_io(id: u64, run: &KvmRunPtr, serial: &Arc<Mutex<Serial>>) {
 }
 
 fn handle_mmio_read(id: u64, addr: u64, data: &mut [u8], vnet: &Arc<Mutex<NetState>>, vblk: &Option<Arc<Mutex<BlkState>>>) {
+    // virtio-blk MMIO read
+    if addr >= VIRTIO_BLK_MMIO_BASE && addr < VIRTIO_BLK_MMIO_BASE + VIRTIO_BLK_MMIO_SIZE {
+        if let Some(blk) = vblk.as_ref() {
+            let offset = addr - VIRTIO_BLK_MMIO_BASE;
+            let val    = blk.lock().unwrap().mmio_read(offset);
+            let bytes  = val.to_le_bytes();
+            let n = data.len().min(4);
+            data[..n].copy_from_slice(&bytes[..n]);
+            return;
+        }
+    }
+    // virtio-net MMIO read
+    if addr >= VIRTIO_NET_MMIO_BASE && addr < VIRTIO_NET_MMIO_BASE + VIRTIO_NET_MMIO_SIZE {
+        let offset = addr - VIRTIO_NET_MMIO_BASE;
+        let val    = vnet.lock().unwrap().mmio_read(offset);
+        let bytes  = val.to_le_bytes();
+        let n = data.len().min(4);
+        data[..n].copy_from_slice(&bytes[..n]);
+        return;
+    }
     debug!("vCPU {id}: MMIO read {addr:#x} len={}", data.len());
     data.fill(0);
 }
 
 fn handle_mmio_write(id: u64, addr: u64, data: &[u8], serial: &Arc<Mutex<Serial>>, vnet: &Arc<Mutex<NetState>>, vblk: &Option<Arc<Mutex<BlkState>>>) {
-    // virtio-blk MMIO
-    if addr >= VIRTIO_BLK_MMIO_BASE && addr < VIRTIO_BLK_MMIO_BASE + VIRTIO_BLK_MMIO_SIZE {
-        if let Some(blk) = vblk {
-            let offset = addr - VIRTIO_BLK_MMIO_BASE;
-            let val = if data.len() >= 4 {
-                u32::from_le_bytes([data[0], data[1], data[2], data[3]])
-            } else if !data.is_empty() { data[0] as u32 } else { 0 };
-            blk.lock().unwrap().mmio_write(offset, val);
-            return;
-        }
-    }
-    debug!("vCPU {id}: MMIO write {addr:#x} len={}", data.len());
-    // PL011 serial fallback at 0x09000000
+    let val32 = if data.len() >= 4 {
+        u32::from_le_bytes([data[0], data[1], data[2], data[3]])
+    } else if !data.is_empty() { data[0] as u32 } else { 0 };
+
+    // PL011 serial at 0x09000000
     if addr >= 0x09000000 && addr < 0x09001000 && !data.is_empty() {
         serial.lock().unwrap().write_port(SERIAL_BASE, data[0]);
         return;
     }
-    // virtio-net MMIO config
+    // virtio-blk MMIO write
     if addr >= VIRTIO_BLK_MMIO_BASE && addr < VIRTIO_BLK_MMIO_BASE + VIRTIO_BLK_MMIO_SIZE {
-        if let Some(blk) = vblk {
-            let offset = addr - VIRTIO_BLK_MMIO_BASE;
-            let val    = blk.lock().unwrap().mmio_read(offset);
-            let bytes  = val.to_le_bytes();
-            let n      = data.len().min(4);
-            data[..n].copy_from_slice(&bytes[..n]);
+        if let Some(blk) = vblk.as_ref() {
+            blk.lock().unwrap().mmio_write(addr - VIRTIO_BLK_MMIO_BASE, val32);
             return;
         }
     }
+    // virtio-net MMIO write
     if addr >= VIRTIO_NET_MMIO_BASE && addr < VIRTIO_NET_MMIO_BASE + VIRTIO_NET_MMIO_SIZE {
-        let offset = addr - VIRTIO_NET_MMIO_BASE;
-        let val = if data.len() >= 4 {
-            u32::from_le_bytes([data[0], data[1], data[2], data[3]])
-        } else if !data.is_empty() {
-            data[0] as u32
-        } else { 0 };
-        vnet.lock().unwrap().mmio_write(offset, val);
+        vnet.lock().unwrap().mmio_write(addr - VIRTIO_NET_MMIO_BASE, val32);
         return;
     }
+    debug!("vCPU {id}: MMIO write {addr:#x} len={} val={val32:#x}", data.len());
 }
 
 // ── vCPU configuration ────────────────────────────────────────────────────
