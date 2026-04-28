@@ -9,7 +9,7 @@ RED='\033[38;2;239;83;80m'; NC='\033[0m'
 REGISTRY="ghcr.io/teampmladv"
 VERSION="${1:-0.1.0}"
 PUSH="${2:-}"
-RUST_CRATES=(caiman-vmm caiman-api caiman-cni caiman-drs caiman-mcp caiman-bts)
+RUST_CRATES=(caiman-vmm caiman-api caiman-cni caiman-drs caiman-bts caiman-mcp)
 IMAGES=(caiman-vmm caiman-api caiman-cni caiman-drs caiman-mcp caiman-bts caiman-ui)
 
 echo -e "\n${BRT}🐊 Caimán OS — OCI Images v${VERSION}${NC}\n"

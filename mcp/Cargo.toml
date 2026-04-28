@@ -1,0 +1,19 @@
+[package]
+name        = "caiman-mcp"
+version     = "0.1.0"
+edition     = "2021"
+description = "Caimán OS — Model Context Protocol server"
+license     = "Apache-2.0"
+
+[[bin]]
+name = "caiman-mcp"
+path = "src/main.rs"
+
+[dependencies]
+tokio       = { version = "1", features = ["full"] }
+axum        = { version = "0.7", features = ["macros"] }
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+anyhow      = "1"
+tracing     = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
