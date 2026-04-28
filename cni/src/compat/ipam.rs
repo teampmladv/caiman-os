@@ -1,4 +1,3 @@
-use crate::ipam::IpamResult;
 //! compat/ipam.rs — Generic IPAM delegation
 //!
 //! Executes any IPAM plugin found in the CNI config's "ipam" block by
@@ -12,6 +11,8 @@ use crate::ipam::IpamResult;
 //!   whereabouts      — cluster-wide range allocation
 //!   static           — fixed IP from config
 //!   flannel          — reads /run/flannel/subnet.env
+
+use crate::ipam::IpamResult;
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};

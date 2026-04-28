@@ -26,3 +26,8 @@ pub async fn collect() -> Result<XdpStats> {
 fn read_u64(path: &str) -> Result<u64> {
     Ok(std::fs::read_to_string(path)?.trim().parse()?)
 }
+
+/// Collect all XDP stats (called by CollectorLoop)
+pub async fn collect_all() -> Result<XdpStats> {
+    collect().await
+}

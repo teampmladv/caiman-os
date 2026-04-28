@@ -31,3 +31,5 @@ reqwest      = { version = "0.12", features = ["json"], default-features = false
 
 [features]
 default = []
+config   = "0.14"
+reqwest  = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
