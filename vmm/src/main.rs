@@ -1,13 +1,12 @@
-//! caiman-vmm v0.2.0 — KVM hypervisor without QEMU
+//! caiman-vmm v0.3.0 — KVM hypervisor without QEMU
 //!
-//! v0.2.0 adds:
-//!   - bzImage loader (Linux x86 boot protocol)
-//!   - Guest memory via KVM_SET_USER_MEMORY_REGION
-//!   - vCPU run loop (KVM_EXIT_IO, KVM_EXIT_MMIO, KVM_EXIT_HLT)
-//!   - 16550A serial console (ttyS0)
-//!   - virtio-blk for disk (optional --disk flag)
+//! v0.3.0 adds:
+//!   - Serial console ttyS0 (16550A) — see the kernel boot log
+//!   - kvm_run mmap for PIO exit data
+//!   - virtio-blk (disk image)
 //!   - XDP registration with caiman_net.ko
 
+use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 use clap::Parser;
 use kvm_ioctls::Kvm;
@@ -19,23 +18,25 @@ mod kvm;
 mod netlink_ctrl;
 mod virtio;
 
+use device::serial::Serial;
+
 #[derive(Parser)]
-#[command(name = "caiman-vmm", version = "0.2.0", about = "KVM VMM — no QEMU")]
+#[command(name = "caiman-vmm", version = "0.3.0", about = "KVM VMM — no QEMU")]
 struct Args {
-    /// Linux bzImage path
+    /// Linux bzImage
     #[arg(long)]
     kernel: String,
 
-    /// Initial ramdisk (optional)
+    /// Initial ramdisk
     #[arg(long)]
     initrd: Option<String>,
 
-    /// Disk image for virtio-blk (optional)
+    /// virtio-blk disk image
     #[arg(long)]
     disk: Option<String>,
 
     /// Kernel command line
-    #[arg(long, default_value = "console=ttyS0 reboot=k panic=1 nomodules")]
+    #[arg(long, default_value = "console=ttyS0,115200 reboot=k panic=1 nomodules")]
     cmdline: String,
 
     /// Guest RAM in MiB
@@ -65,21 +66,15 @@ async fn main() -> Result<()> {
         .init();
 
     let args = Args::parse();
-    info!(
-        "caiman-vmm v0.2.0 — vm_id={} cpus={} mem={}MiB kernel={}",
-        args.vm_id, args.cpus, args.mem_mib, args.kernel
-    );
-
+    info!("caiman-vmm v0.3.0 — vm_id={} cpus={} mem={}MiB", args.vm_id, args.cpus, args.mem_mib);
     run(args).await
 }
 
 async fn run(args: Args) -> Result<()> {
     // ── 1. Guest memory ───────────────────────────────────────────────────
-    // Open KVM just to get a VmFd for the memory regions;
-    // vm.rs will open its own Kvm handle via Vm::new().
-    let kvm_fd   = Kvm::new().context("opening /dev/kvm")?;
-    let vm_fd    = kvm_fd.create_vm().context("KVM_CREATE_VM")?;
-    let mut mem  = kvm::memory::GuestMemory::new(&vm_fd, args.mem_mib, false)
+    let kvm_fd = Kvm::new().context("opening /dev/kvm")?;
+    let vm_fd  = kvm_fd.create_vm().context("KVM_CREATE_VM")?;
+    let mut mem = kvm::memory::GuestMemory::new(&vm_fd, args.mem_mib, false)
         .context("allocating guest memory")?;
     info!("Guest memory: {} MiB", args.mem_mib);
 
@@ -93,10 +88,14 @@ async fn run(args: Args) -> Result<()> {
     ).context("loading bzImage")?;
     info!("Kernel loaded: entry={:#x}", loader_result.entry_point);
 
-    // ── 3. Create VM (irqchip + PIT2 + IRQ routing) ───────────────────────
+    // ── 3. Create VM ──────────────────────────────────────────────────────
     let vm = kvm::vm::Vm::new(&mem).context("creating VM")?;
 
-    // ── 4. Create vCPUs ───────────────────────────────────────────────────
+    // ── 4. Serial console ─────────────────────────────────────────────────
+    let serial = Arc::new(Mutex::new(Serial::new()));
+    info!("Serial console: COM1 (0x3F8) → stdout");
+
+    // ── 5. Create vCPUs ───────────────────────────────────────────────────
     let load = kvm::loader::KernelLoadResult {
         kernel_load:      kvm::loader::KernelLoadOffset { offset: loader_result.entry_point },
         boot_params_addr: kvm::loader::ZERO_PAGE_ADDR,
@@ -104,35 +103,36 @@ async fn run(args: Args) -> Result<()> {
 
     let handles: Vec<_> = (0..args.cpus)
         .map(|id| {
+            let s = Arc::clone(&serial);
             kvm::vcpu::Vcpu::new(&vm, id as u64, &mem, &load)
-                .map(|mut vcpu| vcpu.run())
+                .map(|vcpu| vcpu.run(s))
         })
         .collect::<Result<_>>()?;
 
-    // ── 5. Register with caiman_net (XDP) ─────────────────────────────────
+    info!("{} vCPU(s) running — serial output below:", args.cpus);
+    println!("─────────────────────────────────────────────────────────────");
+
+    // ── 6. XDP + BPF ──────────────────────────────────────────────────────
     let mac = [0x02, 0xaa, 0xbb, 0x00, 0x00, args.vm_id as u8];
     netlink_ctrl::vm_add(args.vm_id, &mac, &args.uplink).await.ok();
-    let pin = format!("/sys/fs/bpf/caiman/vm{}", args.vm_id);
-    ebpf::setup_vm_maps(args.vm_id, &mac, &pin).ok();
-    info!("XDP: vm_id={} mac={}", args.vm_id,
-          mac.map(|b| format!("{b:02x}")).join(":"));
+    ebpf::setup_vm_maps(args.vm_id, &mac,
+        &format!("/sys/fs/bpf/caiman/vm{}", args.vm_id)).ok();
 
-    // ── 6. virtio-blk (if disk provided) ─────────────────────────────────
-    if let Some(ref disk_path) = args.disk {
-        let _blk = virtio::blk::VirtioBlk::new(disk_path, false)
-            .context("opening disk image")?;
-        info!("virtio-blk: {disk_path}");
+    // ── 7. virtio-blk ─────────────────────────────────────────────────────
+    if let Some(ref disk) = args.disk {
+        let _blk = virtio::blk::VirtioBlk::new(disk, false)?;
+        info!("virtio-blk: {disk}");
     }
 
-    // ── 7. Wait for vCPUs ─────────────────────────────────────────────────
-    info!("VM running — {} vCPU(s) active", args.cpus);
-    for h in handles {
-        let _ = h.join();
-    }
+    // ── 8. Wait for VM exit ───────────────────────────────────────────────
+    for h in handles { let _ = h.join(); }
 
-    // ── 8. Cleanup ────────────────────────────────────────────────────────
+    println!("─────────────────────────────────────────────────────────────");
     netlink_ctrl::vm_del(args.vm_id).await.ok();
-    info!("VM {} shutdown complete", args.vm_id);
+    info!("VM {} shutdown", args.vm_id);
     Ok(())
 }
-pub fn fmt_mac(mac: &[u8; 6]) -> String { mac.map(|b| format!("{b:02x}")).join(":") }
+
+pub fn fmt_mac(mac: &[u8; 6]) -> String {
+    mac.map(|b| format!("{b:02x}")).join(":")
+}
