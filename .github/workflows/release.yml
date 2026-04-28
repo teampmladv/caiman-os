@@ -1,0 +1,187 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write   # Cosign keyless signing
+
+jobs:
+  # ── Bump versions ──────────────────────────────────────────────────────────
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Bump Cargo.toml versions
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          find . -name "Cargo.toml" -not -path "*/target/*" | \
+            xargs sed -i "s/^version = \".*\"/version = \"$VERSION\"/"
+
+      - name: Commit version bump
+        run: |
+          git config user.name  "caiman-bot"
+          git config user.email "bot@caiman.io"
+          git add "*.toml"
+          git commit -m "chore: bump version to ${{ steps.ver.outputs.version }}" || true
+
+  # ── Build release artifacts ────────────────────────────────────────────────
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ubuntu-22.04
+    needs: prepare
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install musl target
+        run: |
+          rustup target add ${{ matrix.target }}
+          sudo apt-get install -y musl-tools
+
+      - name: Build all binaries (static, musl)
+        run: |
+          cargo build --release --workspace \
+            --target ${{ matrix.target }}
+
+      - name: Package binaries
+        run: |
+          mkdir -p dist
+          for bin in caiman-vmm caiman-cni caiman-mcp caiman-drs caiman-bts caiman; do
+            if [ -f "target/${{ matrix.target }}/release/$bin" ]; then
+              cp "target/${{ matrix.target }}/release/$bin" "dist/${bin}-linux-amd64"
+              chmod +x "dist/${bin}-linux-amd64"
+            fi
+          done
+          # eBPF objects
+          cp kernel/ebpf/*.o    dist/ 2>/dev/null || true
+          cp microseg/ebpf/*.o  dist/ 2>/dev/null || true
+          # SHA256
+          cd dist && sha256sum * > SHA256SUMS
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.target }}
+          path: dist/
+
+  # ── Build ISO ─────────────────────────────────────────────────────────────
+  iso:
+    name: Build ISO
+    runs-on: ubuntu-22.04
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Buildroot
+        run: make setup BUILDROOT_VER=2024.02
+
+      - name: Build ISO
+        run: make iso
+
+      - name: Upload ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: caiman-iso
+          path: |
+            caiman.iso
+            caiman.iso.sha256
+
+  # ── OCI Images ────────────────────────────────────────────────────────────
+  images:
+    name: Publish images
+    runs-on: ubuntu-22.04
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries-x86_64-unknown-linux-musl
+          path: dist/
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign (keyless signing)
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install Syft (SBOM)
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Build and push images
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          REGISTRY="ghcr.io/${{ github.repository_owner }}"
+          for img in caiman-vmm caiman-cni caiman-mcp caiman-drs caiman-bts caiman-api; do
+            echo "Publishing $img:$VERSION"
+            docker buildx build \
+              --platform linux/amd64 \
+              --tag "$REGISTRY/$img:$VERSION" \
+              --tag "$REGISTRY/$img:latest" \
+              --push \
+              -f "docker/Dockerfile.$img" .
+            # Sign with Cosign (keyless, OIDC)
+            cosign sign --yes "$REGISTRY/$img:$VERSION"
+            # Generate SBOM
+            syft "$REGISTRY/$img:$VERSION" -o spdx-json \
+              > "dist/$img-sbom.spdx.json"
+          done
+
+  # ── GitHub Release ─────────────────────────────────────────────────────────
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-22.04
+    needs: [prepare, build, iso, images]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets/
+
+      - name: Generate changelog
+        run: |
+          git log --oneline \
+            $(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD \
+            --pretty="format:- %s (%h)" \
+            > CHANGELOG_THIS_RELEASE.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Caimán OS ${{ github.ref_name }}"
+          body_path: CHANGELOG_THIS_RELEASE.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            release-assets/binaries-*/caiman-*-linux-amd64
+            release-assets/binaries-*/SHA256SUMS
+            release-assets/caiman-iso/caiman.iso
+            release-assets/caiman-iso/caiman.iso.sha256
+            release-assets/binaries-*/*-sbom.spdx.json
+            k8s/*.yaml

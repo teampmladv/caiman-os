@@ -1,0 +1,272 @@
+---
+# caiman DRS — Kubernetes manifests
+# Deploys: DRS engine + scheduler extender config + CRDs
+
+# ── VmAffinityRule CRD ────────────────────────────────────────────────────
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: vmaffinityrules.caiman.io
+spec:
+  group: caiman.io
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [ruleType, scope]
+              properties:
+                ruleType:
+                  type: string
+                  enum: [Affinity, AntiAffinity]
+                scope:
+                  type: string
+                  enum: [Hard, Soft]
+                vmIds:
+                  type: array
+                  items: { type: integer }
+                vmLabels:
+                  type: object
+                  additionalProperties: { type: string }
+  scope: Namespaced
+  names:
+    plural: vmaffinityrules
+    singular: vmaffinityrule
+    kind: VmAffinityRule
+    shortNames: [var]
+
+---
+# ── ResourcePool CRD ──────────────────────────────────────────────────────
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: resourcepools.caiman.io
+spec:
+  group: caiman.io
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                parent:  { type: string }
+                cpu:
+                  type: object
+                  properties:
+                    reservation: { type: integer }
+                    limit:       { type: integer }
+                    shares:      { type: string, enum: [Low, Normal, High] }
+                    expandable:  { type: boolean }
+                memory:
+                  type: object
+                  properties:
+                    reservation: { type: integer }
+                    limit:       { type: integer }
+                    shares:      { type: string }
+                    expandable:  { type: boolean }
+  scope: Namespaced
+  names:
+    plural: resourcepools
+    singular: resourcepool
+    kind: ResourcePool
+    shortNames: [rp]
+
+---
+# ── DRS engine Deployment ─────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: caiman-drs
+  namespace: caiman-system
+  labels:
+    app: caiman-drs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: caiman-drs
+  template:
+    metadata:
+      labels:
+        app: caiman-drs
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "8765"
+        prometheus.io/path:   "/metrics"
+    spec:
+      serviceAccountName: caiman-drs
+      priorityClassName:  system-cluster-critical
+      containers:
+        - name: drs
+          image: ghcr.io/your-org/caiman-drs:latest
+          args:
+            - --mode=FullyAutomated
+          env:
+            - name: CAIMAN_DRS__MODE
+              value: "FullyAutomated"
+            - name: CAIMAN_DRS__IMBALANCE_THRESHOLD
+              value: "0.10"
+            - name: CAIMAN_DRS__MONITOR_INTERVAL_SECS
+              value: "30"
+            - name: CAIMAN_DRS__MAX_CONCURRENT_MIGRATIONS
+              value: "2"
+          ports:
+            - containerPort: 8765
+              name: http
+          livenessProbe:
+            httpGet: { path: /status, port: 8765 }
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
+
+---
+# ── DRS Service ───────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: caiman-drs
+  namespace: caiman-system
+spec:
+  selector:
+    app: caiman-drs
+  ports:
+    - port: 8765
+      targetPort: 8765
+      name: http
+
+---
+# ── Scheduler extender configuration (patch to kube-scheduler) ───────────
+# Apply with:
+#   kubectl -n kube-system get configmap kube-scheduler-config -o yaml | \
+#   ... patch extenders ... | kubectl apply
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+  - schedulerName: default-scheduler
+    plugins:
+      score:
+        enabled:
+          - name: NodeResourcesFit
+extenders:
+  - urlPrefix: "http://caiman-drs.caiman-system.svc.cluster.local:8765"
+    filterVerb:    "filter"
+    prioritizeVerb: "prioritize"
+    weight:        5
+    enableHTTPS:   false
+    nodeCacheCapable: false
+    ignorable:     true   # Don't fail scheduling if DRS is down
+
+---
+# ── RBAC ─────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: caiman-drs
+  namespace: caiman-system
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: caiman-drs
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["caiman.io"]
+    resources: ["vmaffinityrules", "resourcepools"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: caiman-drs
+subjects:
+  - kind: ServiceAccount
+    name: caiman-drs
+    namespace: caiman-system
+roleRef:
+  kind: ClusterRole
+  name: caiman-drs
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# ── Example affinity rules ────────────────────────────────────────────────
+
+# Web VMs spread across nodes (anti-affinity)
+apiVersion: caiman.io/v1alpha1
+kind: VmAffinityRule
+metadata:
+  name: web-spread
+  namespace: production
+spec:
+  ruleType: AntiAffinity
+  scope: Soft
+  vmLabels:
+    app: web
+    env: production
+
+---
+# DB primary and replica must be on different nodes (hard)
+apiVersion: caiman.io/v1alpha1
+kind: VmAffinityRule
+metadata:
+  name: db-ha-separation
+  namespace: production
+spec:
+  ruleType: AntiAffinity
+  scope: Hard
+  vmIds: [101, 102]   # db-primary, db-replica
+
+---
+# Example resource pools
+apiVersion: caiman.io/v1alpha1
+kind: ResourcePool
+metadata:
+  name: production
+  namespace: default
+spec:
+  cpu:
+    reservation: 16000   # 16 GHz reserved for production VMs
+    limit: 64000
+    shares: High
+    expandable: false
+  memory:
+    reservation: 65536   # 64 GiB reserved
+    limit: 262144        # 256 GiB max
+    shares: High
+    expandable: false
+
+---
+apiVersion: caiman.io/v1alpha1
+kind: ResourcePool
+metadata:
+  name: dev
+  namespace: default
+spec:
+  cpu:
+    reservation: 0
+    limit: 16000
+    shares: Low
+    expandable: true
+  memory:
+    reservation: 0
+    limit: 32768
+    shares: Low
+    expandable: true

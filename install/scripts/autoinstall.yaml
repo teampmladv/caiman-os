@@ -1,0 +1,183 @@
+#cloud-config
+# ═══════════════════════════════════════════════════════════════════════════
+#  Caimán OS — cloud-init autoinstall config
+#  For unattended bare-metal installs via Ubuntu autoinstall (subiquity).
+#  Place at /cdrom/autoinstall.yaml or serve via HTTP to the installer.
+#
+#  Usage:
+#    Boot the Caimán ISO with kernel params:
+#      autoinstall ds=nocloud-net;s=http://<server>/caiman-autoinstall/
+# ═══════════════════════════════════════════════════════════════════════════
+
+autoinstall:
+  version: 1
+
+  identity:
+    hostname:        caiman-node
+    username:        caiman
+    password:        "$6$rounds=4096$CHANGEME$..."   # mkpasswd -m sha-512
+    realname:        "Caiman OS"
+
+  locale:    en_US.UTF-8
+  keyboard:  { layout: us }
+  timezone:  UTC
+
+  # ── Disk layout ──────────────────────────────────────────────────────────
+  storage:
+    layout:
+      name: lvm
+    config:
+      - id: disk0
+        type: disk
+        ptable: gpt
+        wipe: superblock
+        grub_device: true
+
+      # EFI partition
+      - id: efi
+        type: partition
+        device: disk0
+        size: 512M
+        flag: boot
+        grub_device: false
+        preserve: false
+      - id: efi-fmt
+        type: format
+        fstype: fat32
+        volume: efi
+
+      # /boot
+      - id: boot
+        type: partition
+        device: disk0
+        size: 1G
+      - id: boot-fmt
+        type: format
+        fstype: ext4
+        volume: boot
+
+      # LVM PV for root + data
+      - id: lvm-pv
+        type: partition
+        device: disk0
+        size: -1   # rest of disk
+      - id: vg0
+        type: lvm_volgroup
+        name: vg0
+        devices: [lvm-pv]
+
+      # Root volume (40 GiB)
+      - id: lv-root
+        type: lvm_partition
+        volgroup: vg0
+        name: root
+        size: 40G
+      - id: lv-root-fmt
+        type: format
+        fstype: ext4
+        volume: lv-root
+        label: caiman-root
+
+      # Data volume for VMs/snapshots (rest)
+      - id: lv-data
+        type: lvm_partition
+        volgroup: vg0
+        name: data
+        size: -1
+      - id: lv-data-fmt
+        type: format
+        fstype: xfs
+        volume: lv-data
+        label: caiman-data
+
+      - id: root-mount
+        type: mount
+        device: lv-root-fmt
+        path: /
+
+      - id: data-mount
+        type: mount
+        device: lv-data-fmt
+        path: /var/lib/caiman
+
+  # ── Packages ──────────────────────────────────────────────────────────
+  packages:
+    - curl
+    - wget
+    - gnupg2
+    - apt-transport-https
+    - ca-certificates
+    - clang
+    - llvm
+    - libelf-dev
+    - bpftool
+    - iproute2
+    - ethtool
+    - restic
+    - qemu-utils
+    - nvme-cli
+    - open-iscsi
+    - jq
+
+  # ── SSH ────────────────────────────────────────────────────────────────
+  ssh:
+    install-server:  true
+    authorized-keys:
+      - ssh-ed25519 AAAA... your-key-here  # replace with your SSH pubkey
+    allow-pw:        false
+
+  # ── Late commands (run after install, before first boot) ───────────────
+  late-commands:
+    # Set hostname based on MAC address
+    - |
+      MAC=$(ip link show | grep -m1 'link/ether' | awk '{print $2}' | tr ':' '-')
+      echo "caiman-$MAC" > /target/etc/hostname
+
+    # Write caiman.env
+    - |
+      cat > /target/etc/caiman.env <<EOF
+      CAIMAN_VERSION=0.1.0
+      CAIMAN_UPLINK=eth0
+      CAIMAN_STATE_DIR=/var/run/caiman
+      CAIMAN_DATA_DIR=/var/lib/caiman
+      EOF
+
+    # Download and stage the bootstrap script (runs on first boot)
+    - |
+      mkdir -p /target/opt/caiman
+      curl -fsSL https://install.caiman.io \
+        -o /target/opt/caiman/install.sh
+      chmod +x /target/opt/caiman/install.sh
+
+    # First-boot systemd unit — runs install.sh once
+    - |
+      cat > /target/etc/systemd/system/caiman-bootstrap.service <<EOF
+      [Unit]
+      Description=Caimán OS first-boot bootstrap
+      After=network-online.target
+      Wants=network-online.target
+      ConditionPathExists=!/var/lib/caiman/.bootstrapped
+
+      [Service]
+      Type=oneshot
+      ExecStart=/opt/caiman/install.sh --skip-confirm
+      ExecStartPost=/bin/touch /var/lib/caiman/.bootstrapped
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+      EOF
+
+    - curtin in-target --target=/target -- \
+        systemctl enable caiman-bootstrap.service
+
+    # Kernel params: enable KVM + serial console
+    - |
+      sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT=".*"/GRUB_CMDLINE_LINUX_DEFAULT="quiet intel_iommu=on iommu=pt console=ttyS0,115200"/' \
+        /target/etc/default/grub
+    - curtin in-target --target=/target -- update-grub
+
+  # ── User data (post-install cloud-init) ───────────────────────────────
+  user-data:
+    runcmd:
+      - [ systemctl, start, caiman-bootstrap ]

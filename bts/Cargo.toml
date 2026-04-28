@@ -1,0 +1,68 @@
+[package]
+name        = "caiman-bts"
+version     = "0.1.0"
+edition     = "2021"
+description = "Caimán OS — Backup, Templates & Snapshots subsystem"
+license     = "Apache-2.0"
+
+[[bin]]
+name = "caiman-bts"
+path = "src/main.rs"
+
+[dependencies]
+# ── Async ─────────────────────────────────────────────────────────────────
+tokio       = { version = "1", features = ["full"] }
+futures     = "0.3"
+async-trait = "0.1"
+
+# ── HTTP server ───────────────────────────────────────────────────────────
+axum        = { version = "0.7", features = ["macros"] }
+tower       = "0.4"
+tower-http  = { version = "0.5", features = ["cors", "trace"] }
+
+# ── Serialization ─────────────────────────────────────────────────────────
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+
+# ── Storage backends ──────────────────────────────────────────────────────
+# S3 / MinIO / Ceph RADOS GW
+aws-sdk-s3  = "1"
+aws-config  = "1"
+
+# NFS / CIFS mounts via libc
+nix         = { version = "0.28", features = ["fs", "mount"] }
+
+# Restic integration (subprocess)
+tokio-process = "0.2"
+
+# ── Database (catalog + snapshot chain) ───────────────────────────────────
+sqlx = { version = "0.7", features = ["sqlite", "runtime-tokio", "migrate", "chrono", "uuid"] }
+
+# ── Compression + dedup ───────────────────────────────────────────────────
+zstd    = "0.13"
+blake3  = "1"     # content-addressable dedup hashing
+
+# ── Disk image manipulation ───────────────────────────────────────────────
+qcow2   = "0.2"   # parse/create qcow2 snapshots
+libc    = "0.2"
+
+# ── Template rendering ────────────────────────────────────────────────────
+tera    = "1"     # Jinja2-like template engine for cloud-init YAML
+
+# ── Scheduler (cron) ─────────────────────────────────────────────────────
+tokio-cron-scheduler = "0.10"
+
+# ── Error handling ────────────────────────────────────────────────────────
+anyhow    = "1"
+thiserror = "1"
+
+# ── Config / logging ──────────────────────────────────────────────────────
+config   = "0.14"
+tracing  = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# ── Utilities ─────────────────────────────────────────────────────────────
+uuid    = { version = "1", features = ["v4", "serde"] }
+chrono  = { version = "0.4", features = ["serde"] }
+sha2    = "0.10"
+hex     = "0.4"
