@@ -113,8 +113,8 @@ impl BlkState {
             REG_IRQ_STATUS    => self.irq_status,
             REG_STATUS        => self.status,
             // Block config: capacity in sectors (little-endian 64-bit)
-            REG_CONFIG     => (self.sector_count & 0xFFFF_FFFF) as u32,
-            REG_CONFIG + 4 => (self.sector_count >> 32) as u32,
+            0x100 => (self.sector_count & 0xFFFF_FFFF) as u32,
+            0x104 => (self.sector_count >> 32) as u32,
             _ => 0,
         }
     }
