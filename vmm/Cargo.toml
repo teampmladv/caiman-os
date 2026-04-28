@@ -35,7 +35,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Netlink comms with caiman_net_mod kernel module
 
 # eBPF map population (pin maps for XDP program)
-libbpf-rs = "0.24"
 
 # Async runtime for control-plane tasks
 tokio = { version = "1", features = ["full"] }
@@ -47,7 +46,6 @@ thiserror = "1"
 [dev-dependencies]
 tempfile = "3"
 
-# Netlink (simpler, no genetlink)
 netlink-sys  = "0.8"
 
 # System calls
