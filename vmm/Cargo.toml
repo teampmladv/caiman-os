@@ -1,6 +1,6 @@
 [package]
 name        = "caiman-vmm"
-version     = "0.1.0"
+version     = "0.2.0"
 edition     = "2021"
 description = "Caimán OS — KVM VMM without QEMU"
 license     = "Apache-2.0"
@@ -10,11 +10,20 @@ name = "caiman-vmm"
 path = "src/main.rs"
 
 [dependencies]
+# KVM
 kvm-ioctls   = "0.17"
-kvm-bindings = "0.8"
+kvm-bindings = { version = "0.8", features = ["fam-wrappers"] }
 libc         = "0.2"
-clap         = { version = "4", features = ["derive"] }
-tokio        = { version = "1", features = ["full"] }
-anyhow       = "1"
-tracing      = "0.1"
+
+# virtio device model
+vmm-sys-util = "0.12"
+virtio-queue = "0.12"
+
+# CLI + async
+clap  = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+
+# Utilities
+anyhow  = "1"
+tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

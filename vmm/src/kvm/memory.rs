@@ -167,3 +167,11 @@ fn alloc_region(
         slot,
     })
 }
+
+    /// Register all memory regions with the VM.
+    /// Called from Vm::new() after creating the VmFd.
+    pub fn register_with_vm(&self, _vm: &kvm_ioctls::VmFd) -> anyhow::Result<()> {
+        // Regions were already registered in alloc_region() via KVM_SET_USER_MEMORY_REGION
+        // This is a no-op — regions are set up at construction time
+        Ok(())
+    }
