@@ -79,9 +79,9 @@ fn run_loop(id: u64, fd: &mut VcpuFd) {
                         Ok(exit) => {
                                 use kvm_ioctls::VcpuExit::*;
                                 match exit {
-                                        Io => handle_io(id, fd),
-                                        MmioRead(addr, data) => handle_mmio_read(id, addr, data),
-                                        MmioWrite(addr, data) => handle_mmio_write(id, addr, data),
+                                        Io { .. } | Io => { handle_io(id, fd); }
+                                        MmioRead { phys_addr, data, .. } => handle_mmio_read(id, phys_addr, data),
+                                        MmioWrite { phys_addr, data, .. } => handle_mmio_write(id, phys_addr, data),
                                         Hlt => {
                                                 debug!("vCPU {id}: HLT — idling");
                                                 std::thread::sleep(
@@ -117,12 +117,9 @@ fn handle_io(id: u64, fd: &mut VcpuFd) {
         // We only emulate:
         //   0x3f8 (COM1 serial TX) — write byte to stdout
         //   0x604 (ACPI reboot)    — exit the VMM
-        fd.run_emulation().unwrap_or_else(|e| {
-                warn!("vCPU {id}: IO emulation failed: {e}");
-        });
 }
 
-fn handle_mmio_read(id: u64, addr: u64, data: &mut [u8]) {
+fn handle_mmio_read(id: u64, phys_addr: u64, data: &mut [u8]) {
         debug!("vCPU {id}: MMIO read  addr={addr:#x} len={}", data.len());
         // virtio MMIO transport reads are dispatched here in the full
         // implementation; for now return zero (device not ready).
@@ -131,7 +128,7 @@ fn handle_mmio_read(id: u64, addr: u64, data: &mut [u8]) {
         }
 }
 
-fn handle_mmio_write(id: u64, addr: u64, data: &[u8]) {
+fn handle_mmio_write(id: u64, phys_addr: u64, data: &[u8]) {
         debug!("vCPU {id}: MMIO write addr={addr:#x} len={} data={data:?}",
                data.len());
         // virtio MMIO transport writes handled here in full implementation.

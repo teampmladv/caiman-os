@@ -108,7 +108,12 @@ impl GuestMemory {
         ))
     }
 
-    fn region_for_mut(&mut self, guest_addr: u64, len: usize) -> Result<&mut MemoryRegion> {
+    /// Register all regions with the VM (no-op — already done at construction).
+    pub fn register_with_vm(&self, _vm: &kvm_ioctls::VmFd) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+        fn region_for_mut(&mut self, guest_addr: u64, len: usize) -> Result<&mut MemoryRegion> {
         self.regions.iter_mut().find(|r| {
             guest_addr >= r.guest_addr
                 && guest_addr + len as u64 <= r.guest_addr + r.size as u64
@@ -167,11 +172,3 @@ fn alloc_region(
         slot,
     })
 }
-
-    /// Register all memory regions with the VM.
-    /// Called from Vm::new() after creating the VmFd.
-    pub fn register_with_vm(&self, _vm: &kvm_ioctls::VmFd) -> anyhow::Result<()> {
-        // Regions were already registered in alloc_region() via KVM_SET_USER_MEMORY_REGION
-        // This is a no-op — regions are set up at construction time
-        Ok(())
-    }
