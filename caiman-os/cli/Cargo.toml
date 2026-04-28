@@ -1,0 +1,66 @@
+[package]
+name = "caiman"
+version     = "0.1.0"
+edition     = "2021"
+description = "Caimán OS CLI — manage VMs, DRS, micro-seg, storage and GPU from the terminal"
+license     = "Apache-2.0"
+
+[[bin]]
+name = "caiman"
+path = "src/main.rs"
+
+[dependencies]
+# ── CLI framework ─────────────────────────────────────────────────────────
+clap   = { version = "4", features = ["derive", "env", "color", "wrap_help"] }
+clap_complete = "4"
+
+# ── Async runtime ─────────────────────────────────────────────────────────
+tokio        = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+
+# ── HTTP client (talks to caiman-api) ─────────────────────────────────────
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
+
+# ── WebSocket (live tail: caiman logs, caiman events) ─────────────────────
+tokio-tungstenite = { version = "0.21", features = ["rustls-tls-native-roots"] }
+futures           = "0.3"
+
+# ── Terminal UI ───────────────────────────────────────────────────────────
+crossterm   = { version = "0.27", features = ["event-stream"] }
+ratatui     = "0.26"
+tui-textarea= "0.4"
+indicatif   = { version = "0.17", features = ["tokio"] }
+
+# ── Output formatting ─────────────────────────────────────────────────────
+comfy-table   = { version = "7", features = ["tty"] }
+colored       = "2"
+serde_json    = "1"
+serde_yaml    = "0.9"
+syntect       = "5"   # syntax-highlighted JSON/YAML output
+
+# ── Serialization ─────────────────────────────────────────────────────────
+serde = { version = "1", features = ["derive"] }
+
+# ── Config (~/.config/caiman/config.toml) ─────────────────────────────────
+config   = "0.14"
+dirs     = "5"
+
+# ── Auth (JWT storage in keychain) ────────────────────────────────────────
+keyring  = "2"
+
+# ── Interactive prompts ───────────────────────────────────────────────────
+inquire  = "0.7"
+
+# ── Error handling ────────────────────────────────────────────────────────
+anyhow    = "1"
+thiserror = "1"
+
+# ── Logging ───────────────────────────────────────────────────────────────
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# ── Utilities ─────────────────────────────────────────────────────────────
+chrono   = { version = "0.4", features = ["serde"] }
+humantime= "2"
+uuid     = { version = "1", features = ["v4"] }
+regex    = "1"

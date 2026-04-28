@@ -1,0 +1,49 @@
+[package]
+name        = "caiman-drs"
+version     = "0.1.0"
+edition     = "2021"
+description = "caiman DRS — Distributed Resource Scheduler with auto-balancing and live migration"
+license     = "Apache-2.0"
+
+[[bin]]
+name = "caiman-drs"
+path = "src/main.rs"
+
+[dependencies]
+# Async
+tokio        = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+futures      = "0.3"
+
+# Kubernetes API (scheduler extender + CRD watcher)
+kube  = { version = "0.89", features = ["runtime", "derive"] }
+k8s-openapi = { version = "0.22", features = ["v1_29"] }
+
+# Metrics collection
+sysinfo      = "0.30"    # CPU / memory from /proc
+netlink-sys  = "0.8"     # XDP stats from caiman_net_mod
+
+# Serialization
+serde        = { version = "1", features = ["derive"] }
+serde_json   = "1"
+
+# HTTP server (scheduler extender endpoint + Prometheus metrics)
+axum         = "0.7"
+tower        = "0.4"
+
+# Prometheus metrics export
+prometheus   = { version = "0.13", features = ["process"] }
+
+# Error handling
+anyhow    = "1"
+thiserror = "1"
+
+# Logging
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Config
+config = "0.14"
+
+# Math (scoring algorithm)
+statrs = "0.17"

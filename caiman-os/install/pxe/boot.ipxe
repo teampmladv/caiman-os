@@ -1,0 +1,72 @@
+#!ipxe
+# ═══════════════════════════════════════════════════════════════════════════
+#  Caimán OS — iPXE network boot
+#  Host this file at your PXE server and point DHCP option 67 to it.
+#
+#  DHCP option 66 (next-server): <your-pxe-server-ip>
+#  DHCP option 67 (filename):    caiman/boot.ipxe
+#
+#  Or chain from grub/syslinux:
+#    chain http://<pxe-server>/caiman/boot.ipxe
+# ═══════════════════════════════════════════════════════════════════════════
+
+set base-url http://${pxe-server}/caiman
+
+:menu
+menu Caiman OS v0.1.0 — Born in Cuba. Built for the cloud.
+item --key c cp    Control plane node (first node)
+item --key w wk    Worker node
+item --key a aio   All-in-one (single node / dev)
+item --key s shell Shell (debug / rescue)
+item --key r reboot Reboot
+choose --timeout 30 --default cp target && goto ${target}
+
+:cp
+echo Booting Caiman OS — Control Plane...
+kernel ${base-url}/vmlinuz \
+  quiet \
+  caiman.role=cp \
+  caiman.uplink=eth0 \
+  caiman.version=0.1.0 \
+  caiman.autoinstall=1 \
+  console=ttyS0,115200 \
+  nomodeset
+initrd ${base-url}/initrd.img
+boot
+
+:wk
+echo Booting Caiman OS — Worker Node...
+echo Enter control-plane IP:
+read cp-ip
+echo Enter join token:
+read join-token
+kernel ${base-url}/vmlinuz \
+  quiet \
+  caiman.role=worker \
+  caiman.cp-ip=${cp-ip} \
+  caiman.token=${join-token} \
+  caiman.uplink=eth0 \
+  caiman.autoinstall=1 \
+  console=ttyS0,115200 \
+  nomodeset
+initrd ${base-url}/initrd.img
+boot
+
+:aio
+echo Booting Caiman OS — All-in-one...
+kernel ${base-url}/vmlinuz \
+  quiet \
+  caiman.role=aio \
+  caiman.uplink=eth0 \
+  caiman.autoinstall=1 \
+  console=ttyS0,115200 \
+  nomodeset
+initrd ${base-url}/initrd.img
+boot
+
+:shell
+echo Dropping to iPXE shell
+shell
+
+:reboot
+reboot

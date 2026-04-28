@@ -1,0 +1,51 @@
+[package]
+name    = "caiman-vmm"
+version = "0.1.0"
+edition = "2021"
+authors = ["caiman project"]
+description = "Minimal KVM VMM — no QEMU, direct /dev/kvm ioctl + eBPF datapath"
+license = "Apache-2.0"
+
+[[bin]]
+name = "caiman"
+path = "src/main.rs"
+
+[dependencies]
+# KVM ioctls — safe Rust wrappers around /dev/kvm
+kvm-ioctls   = "0.17"
+kvm-bindings = { version = "0.8", features = ["fam-wrappers"] }
+
+# Virtual memory / GPA management
+vm-memory    = { version = "0.15", features = ["backend-mmap"] }
+
+# Virtio device model (no QEMU, just the transport)
+virtio-queue = "0.12"
+virtio-bindings = "0.2"
+
+# Event fd / epoll for IRQ/kick handling
+vmm-sys-util = "0.12"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Logging
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Netlink comms with caiman_net_mod kernel module
+netlink-sys   = "0.8"
+netlink-proto = "0.11"
+genetlink     = "0.3"
+
+# eBPF map population (pin maps for XDP program)
+libbpf-rs = "0.24"
+
+# Async runtime for control-plane tasks
+tokio = { version = "1", features = ["full"] }
+
+# Error handling
+anyhow  = "1"
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"

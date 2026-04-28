@@ -1,0 +1,37 @@
+kernel:
+  - kernel/**
+  - microseg/ebpf/**
+
+vmm:
+  - vmm/**
+
+cni:
+  - cni/**
+
+microseg:
+  - microseg/**
+
+drs:
+  - drs/**
+
+storage:
+  - storage/**
+  - bts/**
+
+ui:
+  - ui/**
+
+install:
+  - install/**
+
+docs:
+  - docs/**
+  - "**/*.md"
+
+ci:
+  - .github/**
+  - Makefile
+  - Cargo.toml
+
+breaking-change:
+  - any: ['BREAKING*', '**/BREAKING*']

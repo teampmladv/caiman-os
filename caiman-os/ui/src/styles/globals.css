@@ -1,0 +1,187 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=IBM+Plex+Sans:wght@300;400;500&family=Syne:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CSS Variables (design tokens) ─────────────────────────────────── */
+:root {
+  --bg:      #070d07;
+  --bg2:     #0a120a;
+  --bg3:     #0d1a0d;
+  --bg4:     #0a150a;
+  --border:  #1a3d1a;
+  --border2: #2e7d32;
+  --green:   #4caf50;
+  --bright:  #76ff03;
+  --dim:     #4a7c4a;
+  --text:    #c8e6c9;
+  --muted:   #6a9b6a;
+  --amber:   #ffb300;
+  --red:     #ef5350;
+  --blue:    #42a5f5;
+  --purple:  #ab47bc;
+
+  --font-mono:    'IBM Plex Mono', monospace;
+  --font-display: 'Syne', sans-serif;
+  --font-sans:    'IBM Plex Sans', sans-serif;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+}
+
+/* ── Base reset ─────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--green); }
+
+/* ── Utility classes ────────────────────────────────────────────────── */
+@layer components {
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-[10px] tracking-wide
+           border border-caiman-border bg-transparent text-caiman-text
+           font-mono cursor-pointer transition-all duration-150
+           hover:border-caiman-green hover:bg-caiman-bg3 hover:text-caiman-bright
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn border-caiman-border2 bg-[#0d2e0d] text-caiman-bright
+           hover:bg-[#0f3d0f] hover:shadow-caiman-glow;
+  }
+  .btn-danger {
+    @apply btn hover:border-caiman-red hover:text-caiman-red hover:bg-[#1a0d0d];
+  }
+  .btn-ghost {
+    @apply btn border-transparent hover:border-caiman-border;
+  }
+
+  /* Status pills */
+  .pill {
+    @apply inline-flex items-center gap-1 text-[8px] px-1.5 py-0.5 rounded tracking-wide font-mono;
+  }
+  .pill-run  { @apply pill bg-[#0d2e0d] text-caiman-bright border border-caiman-border2; }
+  .pill-mig  { @apply pill bg-[#0a1f2e] text-caiman-blue  border border-[#1565c0]; }
+  .pill-stop { @apply pill bg-[#1a0d0d] text-[#ef9a9a]    border border-[#b71c1c]; }
+  .pill-boot { @apply pill bg-[#1a1200] text-caiman-amber  border border-[#f57f17]; }
+  .pill-crit { @apply pill bg-[#2a0000] text-caiman-red    border border-[#b71c1c]; }
+
+  /* Cards / Panels */
+  .panel {
+    @apply bg-caiman-bg2 border border-caiman-border rounded-lg overflow-hidden flex flex-col;
+  }
+  .panel-hd {
+    @apply flex items-center justify-between px-3 py-2 border-b border-caiman-border flex-shrink-0;
+  }
+  .panel-title {
+    @apply text-[9px] tracking-[3px] uppercase text-caiman-green font-mono;
+  }
+  .panel-body {
+    @apply flex-1 overflow-auto p-2;
+  }
+
+  /* KPI cards */
+  .kpi-card {
+    @apply panel cursor-pointer relative hover:border-caiman-border2 transition-colors duration-200;
+  }
+
+  /* Labels / section headers */
+  .sec-label {
+    @apply text-[9px] tracking-[3px] uppercase text-caiman-dim font-mono
+           flex items-center gap-2 mb-1.5;
+  }
+  .sec-label::after {
+    content: '';
+    @apply flex-1 h-px bg-caiman-border;
+  }
+
+  /* Metric bar */
+  .mini-bar {
+    @apply flex items-center gap-1.5;
+  }
+  .bar-track {
+    @apply flex-1 h-[3px] bg-caiman-bg3 rounded-full overflow-hidden;
+  }
+  .bar-fill {
+    @apply h-full rounded-full transition-all duration-500;
+  }
+  .bar-green  { @apply bg-caiman-green; }
+  .bar-amber  { @apply bg-caiman-amber; }
+  .bar-red    { @apply bg-caiman-red; }
+  .bar-bright { @apply bg-caiman-bright; }
+
+  /* Table rows */
+  .data-row {
+    @apply grid items-center gap-2 px-2.5 py-1.5 rounded-md cursor-pointer
+           transition-colors duration-100 border border-transparent
+           hover:bg-caiman-bg3 hover:border-caiman-border;
+  }
+  .data-row.selected {
+    @apply bg-caiman-bg3 border-caiman-border2;
+  }
+
+  /* Tags */
+  .tag {
+    @apply text-[8px] px-1.5 py-0.5 rounded bg-caiman-bg3
+           border border-caiman-border text-caiman-dim font-mono;
+  }
+  .tag-green { @apply tag text-caiman-green border-caiman-border2; }
+  .tag-amber { @apply tag text-caiman-amber border-[#f57f17]; }
+
+  /* Input */
+  .input {
+    @apply w-full bg-caiman-bg3 border border-caiman-border rounded px-2.5 py-1.5
+           text-[11px] text-caiman-text font-mono outline-none
+           focus:border-caiman-green caret-caiman-bright
+           placeholder:text-caiman-dim transition-colors;
+  }
+
+  /* Animated live dot */
+  .live-dot {
+    @apply inline-block w-1.5 h-1.5 rounded-full bg-caiman-bright animate-heartbeat;
+  }
+
+  /* Grid lines background (subtle) */
+  .grid-bg {
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-position: -1px -1px;
+  }
+}
+
+/* ── xterm.js overrides ─────────────────────────────────────────────── */
+.xterm { padding: 8px; }
+.xterm-viewport::-webkit-scrollbar { width: 4px; }
+.xterm-viewport::-webkit-scrollbar-thumb { background: var(--border2); }
+
+/* ── React Flow overrides ────────────────────────────────────────────── */
+.react-flow__background { background: var(--bg2) !important; }
+.react-flow__edge-path  { stroke: var(--green) !important; }
+.react-flow__attribution { display: none !important; }
+.react-flow__controls button {
+  background: var(--bg3) !important;
+  border-color: var(--border) !important;
+  color: var(--dim) !important;
+}
+.react-flow__controls button:hover {
+  background: var(--bg4) !important;
+  color: var(--bright) !important;
+}
+.react-flow__minimap { background: var(--bg2) !important; }

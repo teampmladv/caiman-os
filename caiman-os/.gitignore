@@ -1,0 +1,68 @@
+# ── Rust ──────────────────────────────────────────────────────────────────
+target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# ── eBPF / Kernel ─────────────────────────────────────────────────────────
+*.o
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+*.symvers
+*.order
+.tmp_versions/
+kernel/caiman_net/*.o
+kernel/ebpf/*.o
+microseg/ebpf/*.o
+Module.symvers
+modules.order
+
+# ── Node / UI ─────────────────────────────────────────────────────────────
+ui/node_modules/
+ui/dist/
+ui/.env.local
+ui/.env.production
+
+# ── Build artifacts ───────────────────────────────────────────────────────
+caiman.iso
+caiman.iso.sha256
+*.img
+test-disk.img
+/opt/buildroot/
+
+# ── Secrets / Config ──────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+kubeconfig
+/tmp/
+
+# ── Editors ───────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Database ──────────────────────────────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# ── Logs ──────────────────────────────────────────────────────────────────
+*.log
+/var/
+
+# ── Docker ────────────────────────────────────────────────────────────────
+.dockerignore
+
+# ── Generated ─────────────────────────────────────────────────────────────
+docs/api/
