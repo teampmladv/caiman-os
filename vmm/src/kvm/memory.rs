@@ -125,6 +125,9 @@ impl GuestMemory {
     }
 }
 
+unsafe impl Send for GuestMemory {}
+unsafe impl Sync for GuestMemory {}
+
 fn alloc_region(
     vm:          &VmFd,
     slot:        u32,

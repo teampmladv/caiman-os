@@ -20,6 +20,7 @@ use kvm_ioctls::{VcpuFd, VmFd};
 use tracing::{debug, info, warn};
 
 use crate::device::serial::{Serial, SERIAL_BASE};
+use crate::virtio::net::{NetState, VIRTIO_NET_MMIO_BASE, VIRTIO_NET_MMIO_SIZE};
 use super::{loader::KernelLoadResult, memory::GuestMemory, vm::Vm};
 
 // ── KVM_RUN mmap wrapper ──────────────────────────────────────────────────
@@ -119,17 +120,17 @@ impl Vcpu {
     }
 
     /// Spawn the vCPU run loop in a dedicated OS thread.
-    pub fn run(mut self, serial: Arc<Mutex<Serial>>) -> JoinHandle<()> {
+    pub fn run(mut self, serial: Arc<Mutex<Serial>>, vnet: Arc<Mutex<NetState>>) -> JoinHandle<()> {
         thread::Builder::new()
             .name(format!("vcpu-{}", self.id))
-            .spawn(move || run_loop(self.id, &mut self.fd, &self.run, serial))
+            .spawn(move || run_loop(self.id, &mut self.fd, &self.run, serial, vnet))
             .expect("spawning vCPU thread")
     }
 }
 
 // ── Run loop ──────────────────────────────────────────────────────────────
 
-fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>>) {
+fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>>, vnet: Arc<Mutex<NetState>>) {
     info!("vCPU {id} entering run loop");
     loop {
         match fd.run() {
@@ -137,8 +138,8 @@ fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>
                 use kvm_ioctls::VcpuExit::*;
                 match exit {
                     Io => handle_io(id, run, &serial),
-                    MmioRead(addr, data)  => handle_mmio_read(id, addr, data),
-                    MmioWrite(addr, data) => handle_mmio_write(id, addr, data, &serial),
+                    MmioRead(addr, data)  => handle_mmio_read(id, addr, data, &vnet),
+                    MmioWrite(addr, data) => handle_mmio_write(id, addr, data, &serial, &vnet),
                     Hlt => {
                         debug!("vCPU {id}: HLT — idling");
                         std::thread::sleep(std::time::Duration::from_micros(100));
@@ -198,16 +199,28 @@ fn handle_io(id: u64, run: &KvmRunPtr, serial: &Arc<Mutex<Serial>>) {
     debug!("vCPU {id}: unhandled IO port={port:#x} dir={direction} size={size}");
 }
 
-fn handle_mmio_read(id: u64, addr: u64, data: &mut [u8]) {
+fn handle_mmio_read(id: u64, addr: u64, data: &mut [u8], vnet: &Arc<Mutex<NetState>>) {
     debug!("vCPU {id}: MMIO read {addr:#x} len={}", data.len());
     data.fill(0);
 }
 
-fn handle_mmio_write(id: u64, addr: u64, data: &[u8], serial: &Arc<Mutex<Serial>>) {
+fn handle_mmio_write(id: u64, addr: u64, data: &[u8], serial: &Arc<Mutex<Serial>>, vnet: &Arc<Mutex<NetState>>) {
     debug!("vCPU {id}: MMIO write {addr:#x} len={}", data.len());
-    // MMIO serial at 0x09000000 (PL011-style, if kernel uses it)
+    // PL011 serial fallback at 0x09000000
     if addr >= 0x09000000 && addr < 0x09001000 && !data.is_empty() {
         serial.lock().unwrap().write_port(SERIAL_BASE, data[0]);
+        return;
+    }
+    // virtio-net MMIO config
+    if addr >= VIRTIO_NET_MMIO_BASE && addr < VIRTIO_NET_MMIO_BASE + VIRTIO_NET_MMIO_SIZE {
+        let offset = addr - VIRTIO_NET_MMIO_BASE;
+        let val = if data.len() >= 4 {
+            u32::from_le_bytes([data[0], data[1], data[2], data[3]])
+        } else if !data.is_empty() {
+            data[0] as u32
+        } else { 0 };
+        vnet.lock().unwrap().mmio_write(offset, val);
+        return;
     }
 }
 
