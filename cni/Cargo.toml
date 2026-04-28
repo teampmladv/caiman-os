@@ -10,20 +10,9 @@ name = "caiman-cni"
 path = "src/main.rs"
 
 [dependencies]
-tokio       = { version = "1", features = ["full"] }
-serde       = { version = "1", features = ["derive"] }
-serde_json  = "1"
-anyhow      = "1"
-thiserror   = "1"
-futures     = "0.3"
-ipnet       = "2"
-macaddr     = "1"
-uuid        = { version = "1", features = ["v4"] }
-hex         = "0.4"
-reqwest     = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
-rtnetlink   = "0.14"
-netlink-sys = "0.8"
-tracing     = "0.1"
+tokio     = { version = "1", features = ["full"] }
+serde     = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow    = "1"
+tracing   = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-async-trait = "0.1"
-regex = "1"

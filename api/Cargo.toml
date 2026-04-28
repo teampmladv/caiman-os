@@ -12,24 +12,11 @@ path = "src/main.rs"
 [dependencies]
 tokio        = { version = "1", features = ["full"] }
 axum         = { version = "0.7", features = ["ws", "macros"] }
-tower-http   = { version = "0.5", features = ["cors", "trace", "compression-gzip"] }
+tower-http   = { version = "0.5", features = ["cors", "trace"] }
 serde        = { version = "1", features = ["derive"] }
 serde_json   = "1"
-prometheus   = { version = "0.13", features = ["process"] }
-sqlx         = { version = "0.7", features = ["sqlite", "runtime-tokio", "migrate", "chrono"] }
-sysinfo      = "0.30"
-moka         = { version = "0.12", features = ["future"] }
 anyhow       = "1"
-thiserror    = "1"
+tracing      = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid         = { version = "1", features = ["v4"] }
 chrono       = { version = "0.4", features = ["serde"] }
-futures      = "0.3"
-async-trait  = "0.1"
-tracing      = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-reqwest      = { version = "0.12", features = ["json"], default-features = false, optional = true }
-
-[features]
-default = []
-config   = "0.14"
-reqwest  = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
