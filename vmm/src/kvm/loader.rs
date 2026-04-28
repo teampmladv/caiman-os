@@ -176,12 +176,10 @@ pub fn load_bzimage(
     let kernel_size = kernel_data.len() as u64;
 
     // ── 3. Copiar kernel a 1 MiB en la memoria del guest ─────────────────
-    let load_addr = if { header.relocatable_kernel } != 0 {
-        // Kernel relocatable: usar dirección preferida o KERNEL_LOAD_ADDR
-        std::cmp::max(
-            { header.pref_address },
-            KERNEL_LOAD_ADDR,
-        )
+    let relocatable = header.relocatable_kernel;
+    let pref_addr    = header.pref_address;
+    let load_addr = if relocatable != 0 {
+        std::cmp::max(pref_addr, KERNEL_LOAD_ADDR)
     } else {
         KERNEL_LOAD_ADDR
     };
@@ -201,8 +199,9 @@ pub fn load_bzimage(
         let size = initrd_data.len() as u64;
 
         // Poner el initrd debajo del límite initrd_addr_max, alineado a 4K
-        let max_addr = if { header.initrd_addr_max } > 0 {
-            { header.initrd_addr_max } as u64
+        let initrd_addr_max = header.initrd_addr_max;
+        let max_addr = if initrd_addr_max > 0 {
+            initrd_addr_max as u64
         } else {
             0x3800_0000  // 896 MiB default
         };
