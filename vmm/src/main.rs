@@ -51,11 +51,11 @@ async fn run(args: Args) -> Result<()> {
     // ── 1. Guest memory ───────────────────────────────────────────────────
     let kvm_fd = Kvm::new().context("opening /dev/kvm")?;
     let vm_fd  = kvm_fd.create_vm().context("KVM_CREATE_VM")?;
-    let mut mem = kvm::memory::GuestMemory::new(&vm_fd, args.mem_mib, false)?;
+    let mem = kvm::memory::GuestMemory::new(&vm_fd, args.mem_mib, false)?;
 
     // ── 2. Load kernel ────────────────────────────────────────────────────
     let loader_result = kvm::loader::load_bzimage(
-        &mut mem,
+        &mem,
         std::path::Path::new(&args.kernel),
         &args.cmdline,
         args.initrd.as_deref().map(std::path::Path::new),

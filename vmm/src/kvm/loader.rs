@@ -128,7 +128,7 @@ pub struct KernelLoader {
 /// Carga un bzImage en la memoria del guest y configura la zero page.
 /// Devuelve la dirección del entry point para los registros del vCPU.
 pub fn load_bzimage(
-    mem:        &mut GuestMemory,
+    mem:        &GuestMemory,
     kernel_path:&Path,
     cmdline:    &str,
     initrd_path:Option<&Path>,
@@ -337,7 +337,7 @@ fn build_boot_params(
 
 const GDT_ADDR: u64 = 0x0000_5000;
 
-fn setup_gdt(mem: &mut GuestMemory) -> Result<()> {
+fn setup_gdt(mem: &GuestMemory) -> Result<()> {
     // Descriptores GDT: null, código 32-bit, datos 32-bit, código 64-bit
     let gdt: [u64; 4] = [
         0x0000_0000_0000_0000,  // null descriptor
