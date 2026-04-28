@@ -21,7 +21,7 @@ use std::net::SocketAddr;
 use prometheus::{
     Registry, Gauge, GaugeVec, IntCounterVec, IntGaugeVec,
     Encoder, TextEncoder,
-    opts, gauge_opts, histogram_opts,
+    opts,
 };
 use axum::{Router, routing::get, extract::State};
 use tracing::info;

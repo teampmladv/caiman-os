@@ -18,3 +18,9 @@ pub fn unregister_pod(mac: &str) -> Result<()> {
     let _ = std::fs::remove_file(&sysfs);
     Ok(())
 }
+
+/// Attach XDP redirect to an existing interface (called from chain mode)
+pub fn attach_to_existing_interface(uplink: &str, vm_id: u32, _config: &impl std::fmt::Debug) -> anyhow::Result<()> {
+    register_pod(&format!("02:aa:bb:00:00:{:02x}", vm_id), vm_id, vm_id)?;
+    Ok(())
+}

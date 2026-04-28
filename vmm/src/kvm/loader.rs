@@ -430,3 +430,23 @@ pub fn boot_regs(entry: u64) -> BootRegs {
         gdt_limit: 4 * 8 - 1,   // 4 descriptores × 8 bytes - 1
     }
 }
+
+// ── Compatibility type alias used by vcpu.rs ──────────────────────────────
+
+pub struct KernelLoadResult {
+    pub kernel_load:     KernelLoadOffset,
+    pub boot_params_addr:u64,
+}
+
+pub struct KernelLoadOffset {
+    pub offset: u64,
+}
+
+impl From<KernelLoader> for KernelLoadResult {
+    fn from(k: KernelLoader) -> Self {
+        KernelLoadResult {
+            kernel_load:      KernelLoadOffset { offset: k.entry_point },
+            boot_params_addr: ZERO_PAGE_ADDR,
+        }
+    }
+}

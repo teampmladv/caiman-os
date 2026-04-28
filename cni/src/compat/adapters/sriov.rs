@@ -114,7 +114,7 @@ pub async fn del(env: &CniEnv) -> Result<String> {
 
 fn is_valid_pci(addr: &str) -> bool {
     // Format: DDDD:BB:SS.F  (domain:bus:slot.function)
-    let re = regex_lite::Regex::new(
+    let re = regex::Regex::new(
         r"^[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]$"
     ).unwrap();
     re.is_match(addr)

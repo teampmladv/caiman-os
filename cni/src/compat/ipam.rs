@@ -1,3 +1,4 @@
+use crate::ipam::IpamResult;
 //! compat/ipam.rs — Generic IPAM delegation
 //!
 //! Executes any IPAM plugin found in the CNI config's "ipam" block by
@@ -206,13 +207,6 @@ async fn inject_flannel_subnet(config: &mut Value) -> Result<()> {
     Ok(())
 }
 
-/// Result of an IPAM allocation, used by all CNI adapters
-#[derive(Debug, Clone)]
-pub struct IpamResult {
-    pub ip:      String,
-    pub gateway: String,
-    pub subnet:  String,
-}
 
 pub async fn allocate_via_plugin(plugin: &str) -> anyhow::Result<IpamResult> {
     Ok(IpamResult {

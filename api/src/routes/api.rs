@@ -207,9 +207,9 @@ async fn stop_vm(State(s): State<Arc<AppState>>, Path(id): Path<String>)
     let state = s.cluster.read().await;
     if let Some(vm) = state.vms.iter().find(|v| v.id == id) {
         if let Some(pid) = vm.pid {
-            let _ = nix::sys::signal::kill(
-                nix::unistd::Pid::from_raw(pid as i32),
-                nix::sys::signal::Signal::SIGTERM,
+            let _ = std::process::Command::new("kill")
+                .args(["-TERM", &pid.to_string()])
+                .status(); let _ignored = (
             );
         }
     }

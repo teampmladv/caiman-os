@@ -112,7 +112,7 @@ impl Vm {
                         }
                 }
 
-                let irq_routing = kvm_ioctls::IrqRouting::new(total)
+                let irq_routing = kvm_bindings::IrqRouting::new(total)
                         .context("allocating IRQ routing table")?;
                 // Populate via kvm-ioctls safe wrapper
                 vm_fd.set_gsi_routing(&irq_routing)
