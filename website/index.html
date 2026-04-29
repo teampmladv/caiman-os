@@ -10,27 +10,32 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-  --g:    #76ff03;
-  --g2:   #4caf50;
-  --g3:   #1b5e20;
-  --bg:   #050608;
-  --bg2:  #0a0c0f;
-  --bg3:  #0f1114;
-  --bg4:  #141720;
-  --brd:  rgba(118,255,3,0.12);
-  --brd2: rgba(118,255,3,0.25);
-  --txt:  #c8e6c9;
-  --dim:  #4a7c4a;
-  --red:  #ef5350;
-  --amb:  #ffb300;
-  --blue: #42a5f5;
+  --g:    #16a34a;
+  --g2:   #22c55e;
+  --g3:   #86efac;
+  --g4:   #dcfce7;
+  --g5:   #f0fdf4;
+  --ink:  #0f172a;
+  --ink2: #1e293b;
+  --ink3: #475569;
+  --ink4: #94a3b8;
+  --bg:   #ffffff;
+  --bg2:  #f8fafc;
+  --bg3:  #f1f5f9;
+  --brd:  #e2e8f0;
+  --brd2: #cbd5e1;
+  --txt:  #1e293b;
+  --dim:  #64748b;
+  --red:  #dc2626;
+  --amb:  #d97706;
+  --blue: #2563eb;
 }
 
 *{margin:0;padding:0;box-sizing:border-box}
 
 body {
-  background: var(--bg);
-  color: var(--txt);
+  background: #ffffff;
+  color: #0f172a;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 14px;
   line-height: 1.6;
@@ -43,9 +48,9 @@ body::before {
   position: fixed;
   inset: 0;
   background-image:
-    linear-gradient(rgba(118,255,3,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(118,255,3,0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
+    linear-gradient(rgba(15,23,42,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15,23,42,0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
   pointer-events: none;
   z-index: 0;
 }
@@ -60,9 +65,9 @@ nav {
   justify-content: space-between;
   padding: 0 40px;
   height: 56px;
-  background: rgba(5,6,8,0.92);
+  background: rgba(255,255,255,0.95);
   backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--brd);
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .nav-logo {
@@ -87,7 +92,7 @@ nav {
 }
 
 .nav-links a {
-  color: var(--dim);
+  color: #475569;
   text-decoration: none;
   font-size: 12px;
   letter-spacing: 0.08em;
@@ -127,11 +132,11 @@ nav {
 .btn-ghost:hover { color: var(--g); border-color: var(--brd2); background: rgba(118,255,3,0.05); }
 
 .btn-primary {
-  background: var(--g);
-  color: #050608;
+  background: #16a34a;
+  color: #ffffff;
   font-weight: 600;
 }
-.btn-primary:hover { background: #92ff35; transform: translateY(-1px); }
+.btn-primary:hover { background: #15803d; transform: translateY(-1px); }
 
 /* ── HERO ── */
 .hero {
@@ -158,12 +163,14 @@ nav {
   align-items: center;
   gap: 8px;
   padding: 4px 12px;
-  border: 1px solid var(--brd2);
-  color: var(--g);
+  border: 1px solid #86efac;
+  background: #f0fdf4;
+  color: #16a34a;
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   margin-bottom: 24px;
+  border-radius: 100px;
 }
 
 .hero-tag::before {
@@ -185,7 +192,7 @@ h1 {
   font-size: 58px;
   font-weight: 800;
   line-height: 1.05;
-  color: #e8f5e9;
+  color: #0f172a;
   margin-bottom: 20px;
   letter-spacing: -0.02em;
 }
@@ -216,7 +223,7 @@ h1 span { color: var(--g); }
 }
 
 .metric-item {
-  background: var(--bg2);
+  background: #f8fafc;
   padding: 16px 20px;
   text-align: center;
 }
@@ -224,7 +231,7 @@ h1 span { color: var(--g); }
   font-family: 'Syne', sans-serif;
   font-size: 28px;
   font-weight: 800;
-  color: var(--g);
+  color: #16a34a;
   letter-spacing: -0.02em;
   display: block;
 }
@@ -239,7 +246,7 @@ h1 span { color: var(--g); }
 
 /* ── Terminal ── */
 .terminal {
-  background: var(--bg2);
+  background: #f8fafc;
   border: 1px solid var(--brd);
   font-size: 12px;
   overflow: hidden;
@@ -275,7 +282,7 @@ h1 span { color: var(--g); }
 .tc-b { color: var(--blue); }
 .tc-r { color: var(--red); }
 .tc-a { color: var(--amb); }
-.tc-w { color: #e8f5e9; }
+.tc-w { color: #0f172a; }
 
 .term-cursor {
   display: inline-block;
@@ -323,7 +330,7 @@ h2 {
   font-family: 'Syne', sans-serif;
   font-size: 40px;
   font-weight: 800;
-  color: #e8f5e9;
+  color: #0f172a;
   line-height: 1.1;
   margin-bottom: 16px;
   letter-spacing: -0.02em;
@@ -342,7 +349,7 @@ h2 span { color: var(--g); }
 }
 
 .demo-sidebar {
-  background: var(--bg2);
+  background: #f8fafc;
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -350,7 +357,7 @@ h2 span { color: var(--g); }
 }
 
 .demo-main {
-  background: var(--bg2);
+  background: #f8fafc;
   padding: 24px;
 }
 
@@ -449,7 +456,7 @@ h2 span { color: var(--g); }
 
 .vm-name {
   font-size: 14px;
-  color: #e8f5e9;
+  color: #0f172a;
   font-weight: 500;
   margin-bottom: 8px;
   white-space: nowrap;
@@ -516,7 +523,7 @@ h2 span { color: var(--g); }
   align-items: center;
   margin-bottom: 10px;
 }
-.node-name { font-size: 12px; color: #e8f5e9; }
+.node-name { font-size: 12px; color: #0f172a; }
 .node-badge {
   font-size: 9px;
   padding: 2px 8px;
@@ -538,7 +545,7 @@ h2 span { color: var(--g); }
   text-transform: uppercase;
   text-align: left;
   border-bottom: 1px solid var(--brd);
-  background: var(--bg2);
+  background: #f8fafc;
 }
 .compare-table th.ours { color: var(--g); }
 .compare-table th.their { color: var(--dim); }
@@ -547,7 +554,7 @@ h2 span { color: var(--g); }
   padding: 14px 24px;
   font-size: 13px;
   border-bottom: 1px solid var(--brd);
-  background: var(--bg2);
+  background: #f8fafc;
 }
 .compare-table tr:hover td { background: var(--bg3); }
 .compare-table td.feature { color: var(--dim); font-size: 12px; }
@@ -557,7 +564,7 @@ h2 span { color: var(--g); }
 
 /* ── INSTALL SECTION ── */
 .install-box {
-  background: var(--bg2);
+  background: #f8fafc;
   border: 1px solid var(--brd);
   padding: 40px;
   margin-top: 48px;
@@ -636,7 +643,7 @@ footer {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  background: var(--bg2);
+  background: #f8fafc;
   border: 1px solid var(--brd2);
   padding: 12px 20px;
   font-size: 12px;
