@@ -322,7 +322,7 @@ async fn live_top(vm_id: &str, client: &Client) -> Result<()> {
         let rx  = vm["netRxMbps"].as_f64().unwrap_or(0.0);
         let tx  = vm["netTxMbps"].as_f64().unwrap_or(0.0);
 
-        print!("\r"  {} {} │ CPU {} {} │ MEM {}/{} GiB │ RX {:.1} TX {:.1} Gbps",
+        print!("\r  {} {} | CPU {} {} | MEM {}/{} GiB | RX {:.1} TX {:.1} Gbps",
             output::bright(vm_id),
             color_status(vm["status"].as_str().unwrap_or("")),
             mini_bar(cpu, 10), color_pct(cpu),
@@ -335,5 +335,5 @@ async fn live_top(vm_id: &str, client: &Client) -> Result<()> {
 }
 
 fn spinner(msg: &str) {
-    println!("  ⠋ {msg}...");
+    println!("  >> {msg}...");
 }
