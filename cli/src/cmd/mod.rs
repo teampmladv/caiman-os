@@ -1,8 +1,14 @@
-//! cmd/microseg.rs
+//! cmd/mod.rs — CLI command implementations
+
+pub mod vm;
+pub mod drs;
+pub mod bts;
+
 use clap::Subcommand;
 use anyhow::Result;
 use crate::api::Client;
 use crate::output::{self, OutputFormat, new_table, color_status};
+use crate::output::color_sigma;
 
 #[derive(Subcommand)]
 pub enum MicrosegCmd {
@@ -184,7 +190,7 @@ pub mod node {
 // ── cmd/cluster.rs ────────────────────────────────────────────────────────
 pub mod cluster {
     use super::*;
-    use futures::{StreamExt, SinkExt};
+    use futures::StreamExt;
     use tokio_tungstenite::connect_async;
 
     #[derive(Subcommand)]
@@ -330,7 +336,7 @@ pub mod storage {
                 println!("{t}");
             }
             StorageCmd::Vsan(VsanCmd::Create { name, size, ftt }) => {
-                let res = client.post("/api/storage/vsan",
+                let _res = client.post("/api/storage/vsan",
                     &serde_json::json!({ "name": name, "sizeGib": size, "ftt": ftt })).await?;
                 println!("{} Volume {} created ({} GiB, FTT={})",
                     output::bright("✓"), output::white(&name), size, ftt);
@@ -420,7 +426,7 @@ pub mod config {
                 let client   = crate::api::Client::new(url.into(), None, false);
                 let res = client.post("/auth/login",
                     &serde_json::json!({ "username": username, "password": password })).await?;
-                let token = res["token"].as_str().unwrap_or("").to_string();
+                let _token = res["token"].as_str().unwrap_or("").to_string();
                 // token stored in config
                 println!("{} Logged in as {username}", output::bright("✓"));
             }

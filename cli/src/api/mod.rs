@@ -1,7 +1,7 @@
 //! api/mod.rs — HTTP client wrapper for caiman-api
 
 use anyhow::{bail, Context, Result};
-use reqwest::{Client as Http, Response, StatusCode};
+use reqwest::{Client as Http, Response};
 use serde::{de::DeserializeOwned, Serialize};
 use tracing::debug;
 

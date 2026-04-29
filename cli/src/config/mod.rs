@@ -1,3 +1,4 @@
+use toml;
 //! config/mod.rs — CLI configuration (~/.config/caiman/config.toml)
 
 use anyhow::Result;

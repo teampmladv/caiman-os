@@ -29,3 +29,4 @@ chrono       = { version = "0.4", features = ["serde"] }
 humantime    = "2"
 uuid         = { version = "1", features = ["v4"] }
 tokio-tungstenite = { version = "0.21", features = ["rustls-tls-native-roots"] }
+toml = "0.8"

@@ -164,10 +164,7 @@ async fn main() -> Result<()> {
 
         Commands::Config(c)   => cmd::config::run(c, &cfg).await,
 
-        Commands::Completions { shell } => {
-            generate(shell, &mut Cli::command(), "caiman", &mut std::io::stdout());
-            Ok(())
-        }
+
 
         Commands::Ping => {
             let res = client.get("/health").await?;
