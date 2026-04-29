@@ -1,6 +1,6 @@
 [package]
 name        = "caiman-api"
-version     = "1.0.0"
+version     = "1.0.1"
 edition     = "2021"
 description = "Caimán OS — REST API + WebSocket"
 license     = "Apache-2.0"
