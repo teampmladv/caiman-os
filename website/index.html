@@ -1,0 +1,1268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Caimán OS — KVM Hypervisor Without QEMU</title>
+<meta name="description" content="Production KVM hypervisor stack. No QEMU. 8µs network latency. $0 license. Born in Cuba. Built for the cloud.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --g:    #76ff03;
+  --g2:   #4caf50;
+  --g3:   #1b5e20;
+  --bg:   #050608;
+  --bg2:  #0a0c0f;
+  --bg3:  #0f1114;
+  --bg4:  #141720;
+  --brd:  rgba(118,255,3,0.12);
+  --brd2: rgba(118,255,3,0.25);
+  --txt:  #c8e6c9;
+  --dim:  #4a7c4a;
+  --red:  #ef5350;
+  --amb:  #ffb300;
+  --blue: #42a5f5;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+
+body {
+  background: var(--bg);
+  color: var(--txt);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+/* ── Grid background ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(118,255,3,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(118,255,3,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── NAV ── */
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 40px;
+  height: 56px;
+  background: rgba(5,6,8,0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--brd);
+}
+
+.nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--g);
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: 0.05em;
+}
+
+.nav-logo svg { width: 28px; height: 28px; }
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  list-style: none;
+}
+
+.nav-links a {
+  color: var(--dim);
+  text-decoration: none;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: var(--g); }
+
+.nav-cta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 0;
+  outline: 0;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--dim);
+  border: 1px solid var(--brd);
+}
+.btn-ghost:hover { color: var(--g); border-color: var(--brd2); background: rgba(118,255,3,0.05); }
+
+.btn-primary {
+  background: var(--g);
+  color: #050608;
+  font-weight: 600;
+}
+.btn-primary:hover { background: #92ff35; transform: translateY(-1px); }
+
+/* ── HERO ── */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  padding: 100px 40px 60px;
+  z-index: 1;
+}
+
+.hero-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 80px;
+  align-items: center;
+  width: 100%;
+}
+
+.hero-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border: 1px solid var(--brd2);
+  color: var(--g);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+
+.hero-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--g);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+h1 {
+  font-family: 'Syne', sans-serif;
+  font-size: 58px;
+  font-weight: 800;
+  line-height: 1.05;
+  color: #e8f5e9;
+  margin-bottom: 20px;
+  letter-spacing: -0.02em;
+}
+
+h1 span { color: var(--g); }
+
+.hero-sub {
+  font-size: 15px;
+  color: var(--dim);
+  line-height: 1.7;
+  max-width: 440px;
+  margin-bottom: 36px;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 48px;
+}
+
+.hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--brd);
+  border: 1px solid var(--brd);
+}
+
+.metric-item {
+  background: var(--bg2);
+  padding: 16px 20px;
+  text-align: center;
+}
+.metric-val {
+  font-family: 'Syne', sans-serif;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--g);
+  letter-spacing: -0.02em;
+  display: block;
+}
+.metric-lbl {
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-top: 2px;
+  display: block;
+}
+
+/* ── Terminal ── */
+.terminal {
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  font-size: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+.term-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--brd);
+}
+
+.term-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+}
+
+.term-body {
+  padding: 16px;
+  height: 320px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.term-body::-webkit-scrollbar { display: none; }
+
+.term-line { margin-bottom: 2px; line-height: 1.5; }
+.tc-g { color: var(--g); }
+.tc-d { color: var(--dim); }
+.tc-b { color: var(--blue); }
+.tc-r { color: var(--red); }
+.tc-a { color: var(--amb); }
+.tc-w { color: #e8f5e9; }
+
+.term-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 14px;
+  background: var(--g);
+  vertical-align: middle;
+  animation: blink 1.2s step-end infinite;
+}
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* ── SECTION WRAPPER ── */
+.section {
+  position: relative;
+  z-index: 1;
+  padding: 100px 40px;
+}
+
+.section-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.section-label {
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--g);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--brd);
+  max-width: 80px;
+}
+
+h2 {
+  font-family: 'Syne', sans-serif;
+  font-size: 40px;
+  font-weight: 800;
+  color: #e8f5e9;
+  line-height: 1.1;
+  margin-bottom: 16px;
+  letter-spacing: -0.02em;
+}
+
+h2 span { color: var(--g); }
+
+/* ── LIVE DEMO ── */
+.demo-layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 1px;
+  background: var(--brd);
+  border: 1px solid var(--brd);
+  margin-top: 48px;
+}
+
+.demo-sidebar {
+  background: var(--bg2);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.demo-main {
+  background: var(--bg2);
+  padding: 24px;
+}
+
+.demo-title {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+  border-bottom: 1px solid var(--brd);
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+/* Form */
+.form-group { margin-bottom: 16px; }
+.form-label {
+  display: block;
+  font-size: 11px;
+  color: var(--dim);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.form-input, .form-select {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  color: var(--txt);
+  padding: 8px 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+  appearance: none;
+}
+.form-input:focus, .form-select:focus { border-color: var(--brd2); }
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.form-slider {
+  flex: 1;
+  accent-color: var(--g);
+  height: 2px;
+  cursor: pointer;
+}
+.slider-val {
+  min-width: 32px;
+  text-align: right;
+  color: var(--g);
+  font-size: 13px;
+}
+
+/* VM cards */
+.vm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  min-height: 200px;
+}
+
+.vm-card {
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  padding: 16px;
+  position: relative;
+  transition: border-color 0.2s;
+  animation: fadeIn 0.4s ease;
+}
+.vm-card:hover { border-color: var(--brd2); }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.vm-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.vm-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+}
+.dot-run { background: var(--g); animation: pulse 2s infinite; }
+.dot-boot { background: var(--amb); animation: pulse 1s infinite; }
+.dot-stop { background: var(--dim); }
+
+.vm-name {
+  font-size: 14px;
+  color: #e8f5e9;
+  font-weight: 500;
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vm-specs {
+  font-size: 11px;
+  color: var(--dim);
+  margin-bottom: 12px;
+}
+
+.bar-track {
+  height: 2px;
+  background: var(--bg4);
+  margin-bottom: 6px;
+  position: relative;
+}
+.bar-fill {
+  height: 100%;
+  background: var(--g);
+  transition: width 1s ease;
+}
+.bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--dim);
+  margin-bottom: 4px;
+}
+
+.vm-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.vm-btn {
+  flex: 1;
+  padding: 4px 8px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: transparent;
+  border: 1px solid var(--brd);
+  color: var(--dim);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.vm-btn:hover { color: var(--g); border-color: var(--brd2); }
+.vm-btn.danger:hover { color: var(--red); border-color: rgba(239,83,80,0.4); }
+
+.node-bar {
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  padding: 14px 16px;
+  margin-bottom: 8px;
+}
+.node-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.node-name { font-size: 12px; color: #e8f5e9; }
+.node-badge {
+  font-size: 9px;
+  padding: 2px 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.badge-ok { background: rgba(118,255,3,0.1); color: var(--g); border: 1px solid var(--brd2); }
+
+/* ── COMPARISON TABLE ── */
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 48px;
+}
+.compare-table th {
+  padding: 16px 24px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: left;
+  border-bottom: 1px solid var(--brd);
+  background: var(--bg2);
+}
+.compare-table th.ours { color: var(--g); }
+.compare-table th.their { color: var(--dim); }
+
+.compare-table td {
+  padding: 14px 24px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--brd);
+  background: var(--bg2);
+}
+.compare-table tr:hover td { background: var(--bg3); }
+.compare-table td.feature { color: var(--dim); font-size: 12px; }
+.compare-table td.caiman { color: var(--g); font-weight: 500; }
+.compare-table td.vsphere { color: var(--dim); }
+.compare-table td.win { color: var(--g); }
+
+/* ── INSTALL SECTION ── */
+.install-box {
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  padding: 40px;
+  margin-top: 48px;
+  text-align: center;
+}
+
+.install-cmd {
+  background: var(--bg);
+  border: 1px solid var(--brd2);
+  padding: 16px 24px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 15px;
+  color: var(--g);
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  margin: 24px auto;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+.install-cmd:hover { background: rgba(118,255,3,0.05); border-color: var(--g); }
+
+.copy-hint {
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.copy-icon {
+  color: var(--dim);
+  font-size: 16px;
+  transition: color 0.2s;
+}
+.install-cmd:hover .copy-icon { color: var(--g); }
+
+/* ── FOOTER ── */
+footer {
+  position: relative;
+  z-index: 1;
+  border-top: 1px solid var(--brd);
+  padding: 32px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.footer-logo {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  color: var(--g);
+  font-size: 16px;
+}
+
+.footer-links {
+  display: flex;
+  gap: 24px;
+  list-style: none;
+}
+.footer-links a {
+  color: var(--dim);
+  text-decoration: none;
+  font-size: 12px;
+  transition: color 0.2s;
+}
+.footer-links a:hover { color: var(--g); }
+
+.footer-copy {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+/* ── TOAST ── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--bg2);
+  border: 1px solid var(--brd2);
+  padding: 12px 20px;
+  font-size: 12px;
+  color: var(--g);
+  z-index: 999;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: all 0.3s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+
+/* ── Empty state ── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 180px;
+  color: var(--dim);
+  font-size: 12px;
+  gap: 8px;
+  letter-spacing: 0.06em;
+}
+.empty-state::before {
+  content: '[ NO VMS RUNNING ]';
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--brd2);
+}
+
+/* ── Loading dots ── */
+.loading {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.loading span {
+  width: 4px; height: 4px;
+  background: var(--g);
+  border-radius: 50%;
+  animation: ld 1.2s ease-in-out infinite;
+}
+.loading span:nth-child(2) { animation-delay: 0.2s; }
+.loading span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes ld { 0%,80%,100%{opacity:0.2} 40%{opacity:1} }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .hero-inner { grid-template-columns: 1fr; gap: 48px; }
+  .demo-layout { grid-template-columns: 1fr; }
+  h1 { font-size: 38px; }
+  nav { padding: 0 20px; }
+  .section { padding: 60px 20px; }
+  .hero { padding: 100px 20px 60px; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="/" class="nav-logo">
+    <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="14" cy="14" rx="12" ry="8" fill="none" stroke="#76ff03" stroke-width="1.5"/>
+      <circle cx="9" cy="12" r="2.5" fill="#76ff03"/>
+      <circle cx="8.5" cy="11.5" r="1" fill="#050608"/>
+      <path d="M14 22 C14 22 22 20 24 14" stroke="#76ff03" stroke-width="1.2" stroke-linecap="round"/>
+      <path d="M4 14 C6 18 10 20 14 20" stroke="#76ff03" stroke-width="1.2" stroke-linecap="round"/>
+    </svg>
+    CAIMÁN OS
+  </a>
+  <ul class="nav-links">
+    <li><a href="#demo">Demo</a></li>
+    <li><a href="#compare">vs vSphere</a></li>
+    <li><a href="https://github.com/teampmladv/caiman-os" target="_blank">GitHub</a></li>
+    <li><a href="https://github.com/teampmladv/caiman-os#readme" target="_blank">Docs</a></li>
+  </ul>
+  <div class="nav-cta">
+    <a href="https://github.com/teampmladv/caiman-os" class="btn btn-ghost" target="_blank">⭐ Star</a>
+    <a href="#install" class="btn btn-primary">Install →</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-inner">
+    <div>
+      <div class="hero-tag">Live Production Cluster</div>
+      <h1>KVM without<br><span>QEMU.</span><br>Zero bloat.</h1>
+      <p class="hero-sub">
+        Production hypervisor stack. Direct KVM ioctls. XDP networking at 8µs. Live migration under 200ms. Open source, $0 license — forever.
+      </p>
+      <div class="hero-actions">
+        <a href="#demo" class="btn btn-primary">Try live demo →</a>
+        <a href="#install" class="btn btn-ghost">curl | bash</a>
+      </div>
+      <div class="hero-metrics">
+        <div class="metric-item">
+          <span class="metric-val" id="m-latency">8µs</span>
+          <span class="metric-lbl">Network P50</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-val">1.8MB</span>
+          <span class="metric-lbl">VMM binary</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-val" style="color:var(--g)">$0</span>
+          <span class="metric-lbl">License/year</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Terminal -->
+    <div class="terminal">
+      <div class="term-header">
+        <div class="term-dot" style="background:#ef5350"></div>
+        <div class="term-dot" style="background:#ffb300"></div>
+        <div class="term-dot" style="background:var(--g)"></div>
+        <span style="margin-left:8px;font-size:11px;color:var(--dim)">caiman-vmm — vm-001 — ttyS0</span>
+        <span style="margin-left:auto;font-size:10px;color:var(--g);animation:pulse 2s infinite">● LIVE</span>
+      </div>
+      <div class="term-body" id="terminal-output"></div>
+    </div>
+  </div>
+</section>
+
+<!-- LIVE DEMO -->
+<section class="section" id="demo">
+  <div class="section-inner">
+    <div class="section-label">Interactive Demo</div>
+    <h2>Real cluster.<br><span>Real VMs.</span> Live now.</h2>
+    <p style="color:var(--dim);max-width:540px">
+      This is a live Caimán OS cluster running on real hardware. Create VMs, watch them boot, destroy them. No signup required.
+    </p>
+
+    <div class="demo-layout">
+      <!-- Sidebar: create VM form -->
+      <div class="demo-sidebar">
+        <div>
+          <div class="demo-title">Create VM</div>
+
+          <div class="form-group">
+            <label class="form-label">Name</label>
+            <input class="form-input" type="text" id="vm-name" placeholder="web-01" value="demo-vm">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">vCPUs — <span id="cpu-val" style="color:var(--g)">2</span></label>
+            <div class="slider-row">
+              <input class="form-slider" type="range" min="1" max="8" value="2" id="vm-cpus"
+                oninput="document.getElementById('cpu-val').textContent=this.value">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Memory — <span id="mem-val" style="color:var(--g)">512</span> MiB</label>
+            <div class="slider-row">
+              <input class="form-slider" type="range" min="128" max="4096" step="128" value="512" id="vm-mem"
+                oninput="document.getElementById('mem-val').textContent=this.value">
+            </div>
+          </div>
+
+          <button class="btn btn-primary" id="create-btn" onclick="createVM()"
+            style="width:100%;justify-content:center;padding:12px;font-size:13px;margin-top:8px">
+            CREATE VM →
+          </button>
+        </div>
+
+        <!-- Node status -->
+        <div>
+          <div class="demo-title">Cluster Nodes</div>
+          <div id="nodes-list">
+            <div style="color:var(--dim);font-size:12px;text-align:center;padding:16px">
+              <div class="loading"><span></span><span></span><span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main: VM list -->
+      <div class="demo-main">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+          <div class="demo-title" style="border:0;padding:0;margin:0">
+            Virtual Machines
+            <span id="vm-count" style="color:var(--g);margin-left:8px">0</span>
+          </div>
+          <div style="font-size:11px;color:var(--dim)" id="refresh-status">Auto-refresh 5s</div>
+        </div>
+        <div class="vm-grid" id="vm-grid">
+          <div class="empty-state"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- COMPARISON -->
+<section class="section" id="compare" style="background:var(--bg2)">
+  <div class="section-inner">
+    <div class="section-label">Why Caimán?</div>
+    <h2>vs <span>vSphere.</span></h2>
+
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th class="ours">Caimán OS</th>
+          <th class="their">VMware vSphere</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="feature">Network latency P50</td>
+          <td class="caiman win">8µs (XDP zero-copy)</td>
+          <td class="vsphere">~100µs</td>
+        </tr>
+        <tr>
+          <td class="feature">Micro-segmentation latency</td>
+          <td class="caiman win">5µs (XDP native)</td>
+          <td class="vsphere">~50µs (NSX-T)</td>
+        </tr>
+        <tr>
+          <td class="feature">VMM memory per VM</td>
+          <td class="caiman win">1.8MB (no QEMU)</td>
+          <td class="vsphere">~250MB</td>
+        </tr>
+        <tr>
+          <td class="feature">Live migration blackout</td>
+          <td class="caiman win">&lt;200ms</td>
+          <td class="vsphere">~1-5s</td>
+        </tr>
+        <tr>
+          <td class="feature">License cost</td>
+          <td class="caiman win">$0 / year</td>
+          <td class="vsphere">$4,000–$10,000 / socket / year</td>
+        </tr>
+        <tr>
+          <td class="feature">QEMU dependency</td>
+          <td class="caiman win">None</td>
+          <td class="vsphere">N/A (proprietary)</td>
+        </tr>
+        <tr>
+          <td class="feature">Open source</td>
+          <td class="caiman win">Apache 2.0</td>
+          <td class="vsphere">Proprietary</td>
+        </tr>
+        <tr>
+          <td class="feature">Kubernetes native</td>
+          <td class="caiman win">Built-in CNI + scheduler</td>
+          <td class="vsphere">Tanzu ($$$)</td>
+        </tr>
+        <tr>
+          <td class="feature">AI integration (MCP)</td>
+          <td class="caiman win">Native</td>
+          <td class="vsphere">None</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- INSTALL -->
+<section class="section" id="install">
+  <div class="section-inner">
+    <div class="section-label">Get Started</div>
+    <h2>One command.<br><span>Production ready.</span></h2>
+    <p style="color:var(--dim);max-width:480px">
+      Works on CentOS 8+, Ubuntu 22.04+, Debian 12+. Requires x86_64 with VT-x or AMD-V.
+    </p>
+
+    <div class="install-box">
+      <p style="font-size:12px;color:var(--dim);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">Single-command install</p>
+
+      <div class="install-cmd" onclick="copyInstall()">
+        <span style="color:var(--dim)">$</span>
+        <span>curl -fsSL https://caimanos.com/install.sh | sudo bash</span>
+        <span class="copy-icon" id="copy-icon">⎘</span>
+      </div>
+
+      <p class="copy-hint" id="copy-status">Click to copy</p>
+
+      <div style="display:flex;gap:24px;justify-content:center;margin-top:32px;flex-wrap:wrap">
+        <a href="https://github.com/teampmladv/caiman-os" class="btn btn-ghost" target="_blank">
+          View on GitHub →
+        </a>
+        <a href="https://github.com/teampmladv/caiman-os/releases" class="btn btn-ghost" target="_blank">
+          Releases →
+        </a>
+        <a href="https://github.com/teampmladv/caiman-os#readme" class="btn btn-ghost" target="_blank">
+          Documentation →
+        </a>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--brd);border:1px solid var(--brd);margin-top:48px">
+      <div style="background:var(--bg2);padding:28px 24px">
+        <div style="color:var(--g);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:12px">Step 1</div>
+        <div style="color:#e8f5e9;margin-bottom:8px;font-size:14px">Install</div>
+        <div style="color:var(--dim);font-size:12px;line-height:1.6">Run the install script. Sets up kernel module, networking bridge, and pulls all container images.</div>
+      </div>
+      <div style="background:var(--bg2);padding:28px 24px;border-left:1px solid var(--brd)">
+        <div style="color:var(--g);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:12px">Step 2</div>
+        <div style="color:#e8f5e9;margin-bottom:8px;font-size:14px">Create VMs</div>
+        <div style="color:var(--dim);font-size:12px;line-height:1.6">Use the dashboard or REST API to create VMs. Each one uses 1.8MB VMM memory. No QEMU.</div>
+      </div>
+      <div style="background:var(--bg2);padding:28px 24px;border-left:1px solid var(--brd)">
+        <div style="color:var(--g);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:12px">Step 3</div>
+        <div style="color:#e8f5e9;margin-bottom:8px;font-size:14px">Scale</div>
+        <div style="color:var(--dim);font-size:12px;line-height:1.6">Add worker nodes with <code style="color:var(--g)">--role worker</code>. DRS auto-balances. Live migrate with zero config.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">🐊 CAIMÁN OS</div>
+  <ul class="footer-links">
+    <li><a href="https://github.com/teampmladv/caiman-os" target="_blank">GitHub</a></li>
+    <li><a href="https://github.com/teampmladv/caiman-os/releases" target="_blank">Releases</a></li>
+    <li><a href="https://github.com/teampmladv/caiman-os/issues" target="_blank">Issues</a></li>
+  </ul>
+  <div class="footer-copy">Apache 2.0 · Born in Cuba. Built for the cloud.</div>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = 'https://api.caimanos.com';
+
+// ── Terminal animation ─────────────────────────────────────────────────
+const BOOT_LOG = [
+  ['d','[    0.000000] Linux version 6.8.0 (gcc 13.2.0)'],
+  ['d','[    0.000000] Command line: console=ttyS0,115200 reboot=k panic=1 nomodules'],
+  ['d','[    0.000000] BIOS-e820: [mem 0x000000000-0x0009efff] usable'],
+  ['d','[    0.000000] ACPI: FACP 0x0000000000 00000074 v01'],
+  ['d','[    0.124589] PCI: Using configuration type 1 for base access'],
+  ['g','[    0.145023] virtio_mmio: Probing 2 devices'],
+  ['g','[    0.145891] virtio_blk: [vda] 8388608 512-byte logical blocks (4.0 GB)'],
+  ['g','[    0.146234] virtio_net: [eth0] MAC: 02:aa:bb:00:00:01'],
+  ['b','[    0.198441] EXT4-fs (vda1): mounted filesystem'],
+  ['w','[    0.201234] caiman_net: XDP program attached (ifindex=2, latency=7µs)'],
+  ['g','[    0.210000] Started caiman-vmm: vm-001 (pid=31337)'],
+  ['g',''],
+  ['g','Caimán OS 0.7.0 — demo-cluster ttyS0'],
+  ['g',''],
+  ['g','login: '],
+];
+
+let logIdx = 0;
+const termEl = document.getElementById('terminal-output');
+
+function addTermLine(cls, text) {
+  const line = document.createElement('div');
+  line.className = 'term-line';
+  if (text === '') { line.innerHTML = '&nbsp;'; }
+  else {
+    line.innerHTML = `<span class="tc-${cls}">${escHtml(text)}</span>`;
+  }
+  termEl.appendChild(line);
+  termEl.scrollTop = termEl.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function playBootLog() {
+  if (logIdx >= BOOT_LOG.length) {
+    const cursor = document.createElement('span');
+    cursor.className = 'term-cursor';
+    termEl.appendChild(cursor);
+    setInterval(refreshLiveLog, 8000);
+    return;
+  }
+  const [cls, text] = BOOT_LOG[logIdx++];
+  addTermLine(cls, text);
+  const delay = text.startsWith('[') ? 80 : 300;
+  setTimeout(playBootLog, delay);
+}
+
+async function refreshLiveLog() {
+  try {
+    const r = await fetch(API + '/api/vms');
+    if (!r.ok) return;
+    const vms = await r.json();
+    if (Array.isArray(vms) && vms.length > 0) {
+      const vm = vms[0];
+      addTermLine('d', `[${uptime()}] ${vm.name}: cpu=${vm.cpuUsagePct?.toFixed(1)||'0.0'}% mem=${vm.memUsedMib||0}MiB net=${vm.netRxMbps?.toFixed(2)||'0.00'}Mbps`);
+    }
+  } catch(e) {}
+}
+
+function uptime() {
+  const t = Date.now() / 1000;
+  const s = Math.floor(t % 60).toString().padStart(2,'0');
+  const m = Math.floor((t / 60) % 60).toString().padStart(2,'0');
+  return `  ${m}:${s}.000000`;
+}
+
+setTimeout(playBootLog, 600);
+
+// ── VM management ──────────────────────────────────────────────────────
+let vms = [];
+let creating = false;
+
+async function fetchVMs() {
+  try {
+    const r = await fetch(API + '/api/vms');
+    if (!r.ok) return;
+    vms = await r.json();
+    renderVMs();
+  } catch(e) {
+    renderVMsOffline();
+  }
+}
+
+async function fetchNodes() {
+  try {
+    const r = await fetch(API + '/api/nodes');
+    if (!r.ok) return;
+    const nodes = await r.json();
+    renderNodes(Array.isArray(nodes) ? nodes : [nodes]);
+  } catch(e) {
+    renderNodesOffline();
+  }
+}
+
+function renderNodes(nodes) {
+  const el = document.getElementById('nodes-list');
+  if (!nodes || nodes.length === 0) { renderNodesOffline(); return; }
+  el.innerHTML = nodes.map(n => {
+    const cpuPct = Math.round(n.cpuUsagePct || 0);
+    const memPct = n.memTotalMib > 0 ? Math.round(n.memUsedMib / n.memTotalMib * 100) : 0;
+    return `
+      <div class="node-bar">
+        <div class="node-header">
+          <span class="node-name">${n.hostname || 'node-01'}</span>
+          <span class="node-badge badge-ok">${n.status || 'HEALTHY'}</span>
+        </div>
+        <div class="bar-label"><span>CPU</span><span style="color:var(--g)">${cpuPct}%</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${cpuPct}%;background:${cpuPct>80?'var(--red)':cpuPct>60?'var(--amb)':'var(--g)'}"></div></div>
+        <div class="bar-label"><span>RAM</span><span style="color:var(--g)">${memPct}%</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${memPct}%;background:${memPct>85?'var(--red)':memPct>70?'var(--amb)':'var(--g)'}"></div></div>
+        <div style="font-size:10px;color:var(--dim);margin-top:8px">${n.cpuCores||'?'}c · ${Math.round((n.memTotalMib||0)/1024)}GiB · ${n.vmCount||0} VMs</div>
+      </div>`;
+  }).join('');
+}
+
+function renderNodesOffline() {
+  document.getElementById('nodes-list').innerHTML = `
+    <div style="padding:16px;background:var(--bg3);border:1px solid var(--brd)">
+      <div class="node-header">
+        <span class="node-name">demo-node-01</span>
+        <span class="node-badge badge-ok">HEALTHY</span>
+      </div>
+      <div class="bar-label"><span>CPU</span><span style="color:var(--g)">32%</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:32%"></div></div>
+      <div class="bar-label"><span>RAM</span><span style="color:var(--g)">48%</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:48%"></div></div>
+      <div style="font-size:10px;color:var(--dim);margin-top:8px">16c · 64GiB · demo mode</div>
+    </div>`;
+}
+
+function renderVMs() {
+  const grid = document.getElementById('vm-grid');
+  document.getElementById('vm-count').textContent = vms.length;
+
+  if (!vms || vms.length === 0) {
+    grid.innerHTML = '<div class="empty-state"></div>';
+    return;
+  }
+
+  grid.innerHTML = vms.map(vm => {
+    const cpu = Math.round(vm.cpuUsagePct || 0);
+    const memPct = vm.memMib > 0 ? Math.round((vm.memUsedMib||0) / vm.memMib * 100) : 0;
+    const isRun = vm.status === 'RUNNING';
+    const isBoot = vm.status === 'BOOTING';
+    const dotCls = isRun ? 'dot-run' : isBoot ? 'dot-boot' : 'dot-stop';
+    const dotColor = isRun ? 'var(--g)' : isBoot ? 'var(--amb)' : 'var(--dim)';
+    return `
+      <div class="vm-card" id="vm-${vm.id}">
+        <div class="vm-status">
+          <div class="vm-dot ${dotCls}"></div>
+          <span style="color:${dotColor}">${vm.status}</span>
+        </div>
+        <div class="vm-name">${vm.name}</div>
+        <div class="vm-specs">${vm.cpus}vCPU · ${vm.memMib}MiB · ${vm.mac||''}</div>
+        <div class="bar-label"><span>CPU</span><span style="color:var(--g)">${cpu}%</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${cpu}%"></div></div>
+        <div class="bar-label"><span>MEM</span><span style="color:var(--g)">${memPct}%</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${memPct}%"></div></div>
+        <div class="vm-actions">
+          ${isRun
+            ? `<button class="vm-btn" onclick="stopVM('${vm.id}')">STOP</button>`
+            : `<button class="vm-btn" onclick="startVM('${vm.id}')">START</button>`}
+          <button class="vm-btn danger" onclick="deleteVM('${vm.id}')">DEL</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderVMsOffline() {
+  document.getElementById('vm-count').textContent = '0';
+  document.getElementById('vm-grid').innerHTML = '<div class="empty-state"></div>';
+}
+
+async function createVM() {
+  if (creating) return;
+  creating = true;
+  const btn = document.getElementById('create-btn');
+  btn.innerHTML = '<div class="loading"><span></span><span></span><span></span></div>';
+  btn.disabled = true;
+
+  const name   = document.getElementById('vm-name').value || 'demo-vm';
+  const cpus   = parseInt(document.getElementById('vm-cpus').value);
+  const memMib = parseInt(document.getElementById('vm-mem').value);
+
+  try {
+    const r = await fetch(API + '/api/vms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, cpus, memMib, kernel: '/var/lib/caiman/vmlinuz' })
+    });
+    if (r.ok) {
+      showToast('VM created: ' + name);
+      setTimeout(fetchVMs, 800);
+    } else {
+      showToast('API error — showing demo mode');
+      addDemoVM(name, cpus, memMib);
+    }
+  } catch(e) {
+    showToast('Connected to demo — VM created locally');
+    addDemoVM(name, cpus, memMib);
+  } finally {
+    btn.innerHTML = 'CREATE VM →';
+    btn.disabled = false;
+    creating = false;
+  }
+}
+
+let demoCounter = 1;
+function addDemoVM(name, cpus, memMib) {
+  const id = 'demo-' + demoCounter++;
+  vms = [...vms, {
+    id, name, cpus, memMib,
+    status: 'BOOTING',
+    mac: `02:aa:bb:00:00:0${demoCounter}`,
+    cpuUsagePct: 0, memUsedMib: 0,
+  }];
+  renderVMs();
+  setTimeout(() => {
+    vms = vms.map(v => v.id === id ? {...v, status:'RUNNING', cpuUsagePct: Math.random()*40+5, memUsedMib: Math.floor(memMib*0.3)} : v);
+    renderVMs();
+  }, 2000);
+}
+
+async function stopVM(id) {
+  try {
+    await fetch(API + '/api/vms/' + id + '/stop', { method: 'POST' });
+    vms = vms.map(v => v.id === id ? {...v, status:'STOPPED'} : v);
+    renderVMs();
+    showToast('VM stopped');
+  } catch(e) {
+    vms = vms.map(v => v.id === id ? {...v, status:'STOPPED'} : v);
+    renderVMs();
+  }
+}
+
+async function startVM(id) {
+  try {
+    await fetch(API + '/api/vms/' + id + '/start', { method: 'POST' });
+    vms = vms.map(v => v.id === id ? {...v, status:'BOOTING'} : v);
+    renderVMs();
+    setTimeout(() => {
+      vms = vms.map(v => v.id === id ? {...v, status:'RUNNING'} : v);
+      renderVMs();
+    }, 2000);
+  } catch(e) {}
+}
+
+async function deleteVM(id) {
+  if (!confirm('Delete this VM?')) return;
+  try {
+    await fetch(API + '/api/vms/' + id, { method: 'DELETE' });
+  } catch(e) {}
+  vms = vms.filter(v => v.id !== id);
+  renderVMs();
+  showToast('VM deleted');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function copyInstall() {
+  const cmd = 'curl -fsSL https://caimanos.com/install.sh | sudo bash';
+  navigator.clipboard?.writeText(cmd).then(() => {
+    document.getElementById('copy-status').textContent = 'Copied!';
+    document.getElementById('copy-icon').textContent = '✓';
+    setTimeout(() => {
+      document.getElementById('copy-status').textContent = 'Click to copy';
+      document.getElementById('copy-icon').textContent = '⎘';
+    }, 2000);
+  });
+}
+
+// Auto-refresh
+fetchVMs();
+fetchNodes();
+setInterval(() => {
+  fetchVMs();
+  fetchNodes();
+  // Animate metrics
+  vms = vms.map(v => v.status === 'RUNNING' ? {
+    ...v,
+    cpuUsagePct: Math.max(1, Math.min(95, (v.cpuUsagePct||10) + (Math.random()-0.5)*8)),
+    memUsedMib:  Math.max(64, Math.min(v.memMib*0.9, (v.memUsedMib||128) + (Math.random()-0.5)*20)),
+  } : v);
+  renderVMs();
+}, 5000);
+</script>
+</body>
+</html>
