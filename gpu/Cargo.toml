@@ -1,6 +1,6 @@
 [package]
 name        = "caiman-gpu"
-version     = "0.8.0"
+version     = "1.0.0"
 edition     = "2021"
 description = "Caimán OS — GPU passthrough, MIG, and vGPU management"
 license     = "Apache-2.0"

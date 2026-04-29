@@ -16,7 +16,6 @@
 ///   caiman config set api-url http://caiman-api:8765
 
 use clap::{Parser, Subcommand, CommandFactory};
-use clap_complete::{generate, Shell};
 use anyhow::Result;
 use tracing_subscriber::EnvFilter;
 

@@ -1,6 +1,6 @@
 [package]
 name        = "caiman-mcp"
-version     = "0.1.0"
+version     = "1.0.0"
 edition     = "2021"
 description = "Caimán OS — Model Context Protocol server"
 license     = "Apache-2.0"

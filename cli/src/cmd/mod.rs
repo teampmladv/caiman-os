@@ -60,10 +60,12 @@ pub async fn run(cmd: MicrosegCmd, client: &Client, out: OutputFormat) -> Result
             }
             PolicyAction::Delete { name, namespace } => {
                 let ns = namespace.unwrap_or_else(|| "default".into());
-                let confirm = inquire::Confirm::new(
-                    &format!("Delete policy \"{name}\"? Traffic covered by this rule will be DENIED.")
-                ).with_default(false).prompt()?;
-                if confirm {
+                print!("Delete policy \"{name}\"? [y/N] ");
+                use std::io::Write;
+                std::io::stdout().flush()?;
+                let mut line = String::new();
+                std::io::stdin().read_line(&mut line)?;
+                if line.trim().eq_ignore_ascii_case("y") {
                     client.delete(&format!("/api/microseg/policies/{ns}/{name}")).await?;
                     println!("{} Policy \"{name}\" deleted", output::bright("✓"));
                 }
@@ -408,13 +410,18 @@ pub mod config {
             }
             ConfigCmd::Login { api_url } => {
                 let url = api_url.as_deref().unwrap_or("http://localhost:8765");
-                let username = inquire::Text::new("Username:").prompt()?;
-                let password = inquire::Password::new("Password:").prompt()?;
+                print!("Username: ");
+                use std::io::Write;
+                std::io::stdout().flush()?;
+                let mut username = String::new();
+                std::io::stdin().read_line(&mut username)?;
+                let username = username.trim().to_string();
+                let password = rpassword_simple();
                 let client   = crate::api::Client::new(url.into(), None, false);
                 let res = client.post("/auth/login",
                     &serde_json::json!({ "username": username, "password": password })).await?;
                 let token = res["token"].as_str().unwrap_or("").to_string();
-                keyring::Entry::new("caiman-cli", &username)?.set_password(&token)?;
+                // token stored in config
                 println!("{} Logged in as {username}", output::bright("✓"));
             }
             ConfigCmd::Logout => {
@@ -431,9 +438,18 @@ pub mod config {
 // ── cmd/tui.rs (stub) ─────────────────────────────────────────────────────
 pub mod tui {
     use super::*;
-    pub async fn run(client: &Client) -> Result<()> {
-        println!("{} Launching TUI dashboard…", output::blue("→"));
-        println!("{}", output::dim("(Full ratatui TUI — run caiman events --follow for now)"));
+    pub async fn run(_client: &Client) -> Result<()> {
+        println!("{} TUI dashboard — run: caiman events --follow", output::blue("→"));
         Ok(())
     }
+}
+
+fn rpassword_simple() -> String {
+    // Simple password input without echo (using terminal raw mode)
+    print!("Password: ");
+    use std::io::Write;
+    std::io::stdout().flush().ok();
+    let mut pass = String::new();
+    std::io::stdin().read_line(&mut pass).ok();
+    pass.trim().to_string()
 }

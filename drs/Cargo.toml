@@ -1,6 +1,6 @@
 [package]
 name        = "caiman-drs"
-version     = "0.1.0"
+version     = "1.0.0"
 edition     = "2021"
 description = "caiman DRS — Distributed Resource Scheduler with auto-balancing and live migration"
 license     = "Apache-2.0"
