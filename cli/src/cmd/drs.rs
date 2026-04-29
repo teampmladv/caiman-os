@@ -41,7 +41,7 @@ pub async fn run(cmd: DrsCmd, client: &Client, out: OutputFormat) -> Result<()> 
 
             println!();
             println!("  {} DRS Balance Report", output::bright("🐊"));
-            println!("  {}", output::dim("─".repeat(40)));
+            println!("  {}", output::dim(&"─".repeat(40)));
             println!("  Balance σ      {}  {}",
                 color_sigma(sigma),
                 if imbal { output::amber("⚠ IMBALANCED").to_string() }

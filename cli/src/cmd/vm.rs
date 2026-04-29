@@ -13,9 +13,8 @@
 //! caiman vm exec vm-001 -- /bin/sh -c "uname -a"
 //! caiman vm label vm-001 app=web env=prod
 
-use clap::{Subcommand, Args};
+use clap::Subcommand;
 use anyhow::Result;
-use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Duration;
 
 use crate::api::Client;
@@ -283,15 +282,13 @@ pub async fn run(cmd: VmCmd, client: &Client, out: OutputFormat) -> Result<()> {
 // ── Console attach (raw terminal passthrough) ─────────────────────────────
 
 async fn console_attach(vm_id: &str, client: &Client) -> Result<()> {
-    use crossterm::{terminal, execute};
-    use std::io::Write;
 
     println!("{} Attaching to serial console of {}",
         output::blue("→"), output::white(vm_id));
     println!("{}", output::dim("Press Ctrl+] to detach"));
 
     // Use WS to stream console
-    let ws_url = client.ws_url(&format!("/ws/console/{vm_id}"));
+    let _ws_url = client.ws_url(&format!("/ws/console/{vm_id}"));
     // Simplified: just tail the log
     stream_logs(vm_id, client).await
 }
@@ -320,7 +317,6 @@ async fn stream_logs(vm_id: &str, client: &Client) -> Result<()> {
 // ── Live top (refreshing metrics) ─────────────────────────────────────────
 
 async fn live_top(vm_id: &str, client: &Client) -> Result<()> {
-    use crossterm::{cursor, terminal, execute, style};
     use std::io::{stdout, Write};
 
     loop {

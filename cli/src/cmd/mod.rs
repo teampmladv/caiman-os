@@ -3,6 +3,7 @@
 pub mod vm;
 pub mod drs;
 pub mod bts;
+pub mod microseg;
 
 use clap::Subcommand;
 use anyhow::Result;
@@ -199,7 +200,7 @@ pub mod cluster {
         Summary,
     }
 
-    pub async fn run(cmd: ClusterCmd, client: &Client, out: OutputFormat) -> Result<()> {
+    pub async fn run(cmd: ClusterCmd, client: &Client, _out: OutputFormat) -> Result<()> {
         let res = client.get("/api/cluster").await?;
         match cmd {
             ClusterCmd::Status | ClusterCmd::Summary => {
