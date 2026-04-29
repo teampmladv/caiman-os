@@ -29,13 +29,7 @@ pub struct CreateVmRequest {
 
 /// Spawn caiman-vmm and return the VM state with PID
 pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> {
-    let uuid_str = Uuid::new_v4().to_string();
-    let id      = format!("vm-{}", &uuid_str[..8]);
-    // caiman-vmm expects --vm-id as a u32 — use unix timestamp mod 65535
-    let vm_num: u32 = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_micros() % 65535 + 1;
+    let id = format!("vm-{}", &Uuid::new_v4().to_string()[..8]);
     let cpus    = req.cpus.unwrap_or(1);
     let mem_mib = req.mem_mib.unwrap_or(256);
     let kernel  = req.kernel.clone()
@@ -75,7 +69,7 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
         .arg("--mem-mib").arg(mem_mib.to_string())
         .arg("--cpus").arg(cpus.to_string())
         .arg("--uplink").arg(&uplink)
-        .arg("--vm-id").arg(vm_num.to_string());
+        .arg("--vm-id").arg(&id);
 
     if let Some(ref disk) = req.disk {
         cmd.arg("--disk").arg(disk);

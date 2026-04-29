@@ -35,7 +35,7 @@ struct Args {
     #[arg(long, default_value_t = 1)]   cpus:    u8,
     #[arg(long, default_value = "eth0")] uplink:  String,
     #[arg(long, default_value = "tap0")] tap:     String,
-    #[arg(long, default_value_t = 1)]   vm_id:   u32,
+    #[arg(long, default_value = "1")]    vm_id:   String,
 }
 
 #[tokio::main]
@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     let args = Args::parse();
-    info!("caiman-vmm v0.6.0 — vm_id={} mem={}MiB cpus={}", args.vm_id, args.mem_mib, args.cpus);
+    info!("caiman-vmm v1.0.0 — vm_id={} mem={}MiB cpus={}", args.vm_id, args.mem_mib, args.cpus);
     run(args).await
 }
 
@@ -69,7 +69,14 @@ async fn run(args: Args) -> Result<()> {
     let vm = kvm::vm::Vm::new(&*mem)?;
 
     // ── 4. virtio-net ─────────────────────────────────────────────────────
-    let mac  = [0x02, 0xaa, 0xbb, 0x00, 0x00, args.vm_id as u8];
+    // Parse vm_id to u32 for MAC/netlink — strip "vm-" prefix, take decimal or hash
+    let vm_num: u32 = args.vm_id.trim_start_matches("vm-")
+        .parse::<u32>()
+        .unwrap_or_else(|_| {
+            // Hash the string to a u32
+            args.vm_id.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32)) & 0xFF
+        });
+    let mac  = [0x02, 0xaa, 0xbb, 0x00, (vm_num >> 8) as u8, (vm_num & 0xFF) as u8];
     let vnet = VirtioNet::new(vm.vm_fd(), mac)?;
 
     // ── 5. virtio-blk (optional) ──────────────────────────────────────────
@@ -111,11 +118,11 @@ async fn run(args: Args) -> Result<()> {
     vnet.start_dataplane(&args.tap, Arc::clone(&mem))?;
 
     // ── 8. XDP ───────────────────────────────────────────────────────────
-    netlink_ctrl::vm_add(args.vm_id, &mac, &args.uplink).await.ok();
+    netlink_ctrl::vm_add(vm_num, &mac, &args.uplink).await.ok();
 
     for h in handles { let _ = h.join(); }
     println!("─────────────────────────────────────────────────────");
-    netlink_ctrl::vm_del(args.vm_id).await.ok();
+    netlink_ctrl::vm_del(vm_num).await.ok();
     info!("VM {} shutdown", args.vm_id);
     Ok(())
 }
