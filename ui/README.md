@@ -1,6 +1,6 @@
 # Caimán OS — Dashboard UI
 
-> Born in Cuba. Built for the cloud. Better than Rancher. Better than vSphere.
+> Named after the Cuban crocodile. Built for the cloud. Better than Rancher. Better than vSphere.
 
 ## Stack
 - **React 18** + TypeScript + Vite

@@ -1,0 +1,21 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: caiman-production
+
+scrape_configs:
+  - job_name: caiman-api
+    static_configs:
+      - targets: ['caiman-api:9090']
+    relabel_configs:
+      - target_label: node
+        replacement: '${HOSTNAME}'
+
+  - job_name: caiman-drs
+    static_configs:
+      - targets: ['caiman-drs:8766']
+
+  - job_name: node
+    static_configs:
+      - targets: ['localhost:9100']

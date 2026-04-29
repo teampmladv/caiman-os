@@ -172,6 +172,6 @@ pub fn print_logo() {
   ██║     ██╔══██║██║██║╚██╔╝██║██╔══██║██║╚██╗██║
   ╚██████╗██║  ██║██║██║ ╚═╝ ██║██║  ██║██║ ╚████║
    ╚═════╝╚═╝  ╚═╝╚═╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝"));
-    println!("  {}", dim("Born in Cuba. Built for the cloud."));
+    println!("  {}", dim("Named after the Cuban crocodile. Built for the cloud."));
     println!();
 }

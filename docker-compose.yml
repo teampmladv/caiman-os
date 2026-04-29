@@ -1,55 +1,75 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  Caimán OS — Production stack
+#  Usage: docker-compose up -d
+#  Dashboard: http://<host>:3000
+# ═══════════════════════════════════════════════════════════════════════════
+
 services:
 
+  # ── Core API ─────────────────────────────────────────────────────────────
   caiman-api:
-    image: ghcr.io/teampmladv/caiman-api:latest
+    image: ghcr.io/teampmladv/caiman-api:0.7.0
     container_name: caiman-api
     restart: unless-stopped
-    ports:
-      - "8765:8765"   # REST + WebSocket
-      - "9090:9090"   # Prometheus metrics
+    network_mode: host          # needs host network for spawning VMs
+    pid: host                   # needs host PID namespace for kill()
+    privileged: true            # needs /dev/kvm + /var/run/caiman
     environment:
-      - CAIMAN_STATE_DIR=/var/run/caiman
-      - CAIMAN_UPLINK=eth0
-      - DATABASE_URL=sqlite:///var/lib/caiman/caiman.db
-      - RUST_LOG=caiman_api=info
+      RUST_LOG: caiman_api=info
     volumes:
-      - caiman-state:/var/run/caiman
-      - caiman-data:/var/lib/caiman
+      - /var/run/caiman:/var/run/caiman    # VM state files
+      - /var/lib/caiman:/var/lib/caiman    # disk images
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
-    privileged: true
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
-      interval: 30s
+      test: ["CMD", "curl", "-sf", "http://localhost:8765/health"]
+      interval: 15s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 5s
 
+  # ── Dashboard ─────────────────────────────────────────────────────────────
   caiman-ui:
-    image: ghcr.io/teampmladv/caiman-ui:latest
+    image: ghcr.io/teampmladv/caiman-ui:0.7.0
     container_name: caiman-ui
     restart: unless-stopped
     ports:
       - "3000:80"
     environment:
-      - VITE_API_URL=http://caiman-api:8765
+      VITE_API_URL: http://localhost:8765
     depends_on:
       caiman-api:
         condition: service_healthy
 
+  # ── DRS scheduler ────────────────────────────────────────────────────────
   caiman-drs:
-    image: ghcr.io/teampmladv/caiman-drs:latest
+    image: ghcr.io/teampmladv/caiman-drs:0.7.0
     container_name: caiman-drs
     restart: unless-stopped
-    ports:
-      - "8766:8765"
+    network_mode: host
     environment:
-      - CAIMAN_DRS__MODE=FullyAutomated
-      - CAIMAN_DRS__IMBALANCE_THRESHOLD=0.10
-      - CAIMAN_DRS__MONITOR_INTERVAL_SECS=30
-      - RUST_LOG=caiman_drs=info
+      RUST_LOG:                      caiman_drs=info
+      CAIMAN_DRS__API_URL:           http://localhost:8765
+      CAIMAN_DRS__MODE:              FullyAutomated
+      CAIMAN_DRS__IMBALANCE_THRESHOLD: "0.10"
+      CAIMAN_DRS__MONITOR_INTERVAL_SECS: "30"
     depends_on:
-      - caiman-api
+      caiman-api:
+        condition: service_healthy
 
+  # ── Backup, Templates & Snapshots ─────────────────────────────────────────
+  caiman-bts:
+    image: ghcr.io/teampmladv/caiman-bts:0.7.0
+    container_name: caiman-bts
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      RUST_LOG: caiman_bts=info
+    volumes:
+      - /var/lib/caiman:/var/lib/caiman
+      - /var/run/caiman:/var/run/caiman
+
+  # ── Prometheus ───────────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.51.0
     container_name: caiman-prometheus
@@ -58,14 +78,12 @@ services:
       - "9091:9090"
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=30d
-      - --web.enable-lifecycle
 
+  # ── Grafana ──────────────────────────────────────────────────────────────
   grafana:
     image: grafana/grafana:10.4.0
     container_name: caiman-grafana
@@ -73,9 +91,8 @@ services:
     ports:
       - "3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=caiman
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=http://localhost:3001
+      GF_SECURITY_ADMIN_PASSWORD: caiman
+      GF_USERS_ALLOW_SIGN_UP:    "false"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
@@ -83,11 +100,5 @@ services:
       - prometheus
 
 volumes:
-  caiman-state:
-  caiman-data:
   prometheus-data:
   grafana-data:
-
-networks:
-  default:
-    name: caiman-network

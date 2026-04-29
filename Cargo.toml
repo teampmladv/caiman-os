@@ -20,7 +20,7 @@ authors     = ["Caimán OS Contributors"]
 license     = "Apache-2.0"
 repository  = "https://github.com/teampmladv/caiman-os"
 homepage    = "https://caiman.io"
-description = "Caimán OS — KVM hypervisor without QEMU. Born in Cuba. Built for the cloud."
+description = "Caimán OS — KVM hypervisor without QEMU. Named after the Cuban crocodile. Built for the cloud."
 
 [workspace.dependencies]
 tokio       = { version = "1", features = ["full"] }

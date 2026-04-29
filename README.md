@@ -2,7 +2,7 @@
 
 # 🐊 Caimán OS
 
-**KVM hypervisor without QEMU. Born in Cuba. Built for the cloud.**
+**KVM hypervisor without QEMU. Named after the Cuban crocodile. Built for the cloud.**
 
 [![CI](https://github.com/teampmladv/caiman-os/actions/workflows/ci.yml/badge.svg)](https://github.com/teampmladv/caiman-os/actions)
 [![Release](https://img.shields.io/github/v/release/teampmladv/caiman-os)](https://github.com/teampmladv/caiman-os/releases)
@@ -192,7 +192,7 @@ Apache 2.0 — see [LICENSE](LICENSE)
 
 <div align="center">
 
-**Born in Cuba 🇨🇺 · Built for the cloud ☁️**
+**Named after the Cuban crocodile 🐊 · Built for the cloud ☁️**
 
 [caimanos.com](https://caimanos.com) · [GitHub](https://github.com/teampmladv/caiman-os)
 

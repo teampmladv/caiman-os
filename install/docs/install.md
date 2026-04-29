@@ -1,6 +1,6 @@
 # Caimán OS — Guía de instalación
 
-> Born in Cuba. Built for the cloud.
+> Named after the Cuban crocodile. Built for the cloud.
 
 ---
 

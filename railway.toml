@@ -1,0 +1,19 @@
+# Railway deployment configuration for Caimán OS demo
+# https://railway.app
+
+[build]
+  builder = "DOCKERFILE"
+  dockerfilePath = "docker/Dockerfile.railway-api"
+
+[deploy]
+  startCommand = "/usr/local/bin/caiman-api"
+  healthcheckPath = "/health"
+  healthcheckTimeout = 30
+  restartPolicyType = "ON_FAILURE"
+  restartPolicyMaxRetries = 3
+
+[[services]]
+  name = "caiman-api"
+
+[[services]]
+  name = "caiman-web"

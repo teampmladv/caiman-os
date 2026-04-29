@@ -1,0 +1,51 @@
+# docker/Dockerfile.railway-api
+# Optimized for Railway deployment — demo mode, no KVM needed
+
+FROM rust:1.77-slim-bookworm AS builder
+
+WORKDIR /build
+
+# Install only what's needed for the API crate
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+    libssl-dev pkg-config libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy workspace files
+COPY Cargo.toml ./
+COPY api/        api/
+COPY vmm/        vmm/
+COPY cni/        cni/
+COPY microseg/   microseg/
+COPY drs/        drs/
+COPY bts/        bts/
+COPY livemig/    livemig/
+COPY gpu/        gpu/
+COPY cli/        cli/
+COPY mcp/        mcp/
+
+RUN cargo build --release -p caiman-api
+
+# ── Runtime ────────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim
+
+LABEL org.opencontainers.image.title="Caimán API (Railway Demo)"
+LABEL org.opencontainers.image.source="https://github.com/teampmladv/caiman-os"
+
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+    libssl3 libsqlite3-0 ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/caiman-api /usr/local/bin/caiman-api
+
+# Railway sets PORT env var — we need to bind on it
+# caiman-api defaults to 8765 but Railway expects $PORT
+ENV DEMO_MODE=true \
+    RUST_LOG=caiman_api=info \
+    PORT=8765
+
+EXPOSE $PORT
+
+HEALTHCHECK --interval=30s --timeout=5s \
+    CMD curl -sf http://localhost:${PORT}/health || exit 1
+
+ENTRYPOINT ["/usr/local/bin/caiman-api"]

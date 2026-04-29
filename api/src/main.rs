@@ -1,129 +1,174 @@
-//! caiman-api v0.5.0 — REST API completa
+//! caiman-api v0.7.0 — REST API (production + Railway demo mode)
 //!
-//! VM lifecycle endpoints:
-//!   POST   /api/vms                → crear + arrancar VM (spawna caiman-vmm)
-//!   GET    /api/vms                → listar VMs desde /var/run/caiman/*.json
-//!   GET    /api/vms/:id            → detalle de una VM
-//!   POST   /api/vms/:id/start      → arrancar VM parada
-//!   POST   /api/vms/:id/stop       → parar VM (SIGTERM)
-//!   POST   /api/vms/:id/force-stop → matar VM (SIGKILL)
-//!   DELETE /api/vms/:id            → eliminar VM y estado
-//!   GET    /api/vms/:id/logs       → últimas líneas del log serial
-//!
-//! Cluster / infra:
-//!   GET    /api/cluster            → overview (nodos + VMs + métricas)
-//!   GET    /api/nodes              → métricas reales del nodo (/proc)
-//!   GET    /api/drs/recommendations→ recomendaciones DRS (stub)
-//!   GET    /health
+//! DEMO_MODE=true → in-memory simulation, no KVM required (Railway)
+//! DEMO_MODE=false → real VMs via caiman-vmm (bare metal)
 
 use std::net::SocketAddr;
-use axum::{
-    Router,
-    routing::{get, post, delete},
-    extract::{Path, Json},
-    http::StatusCode,
-    response::IntoResponse,
-};
+use std::sync::{Arc, RwLock};
+use axum::{Router, routing::{get, post, delete}, extract::{Path, Json, State}, http::StatusCode, response::IntoResponse};
 use serde_json::{json, Value};
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
 mod vm;
 mod node;
+mod demo;
 
+use demo::state::{DemoStore, SharedDemo};
 use vm::state::{VmState, VmStatus};
 use vm::runner::{CreateVmRequest, spawn_vm, stop_vm, kill_vm, delete_vm};
 use node::metrics::NodeMetrics;
 
-// ── Error helper ──────────────────────────────────────────────────────────
+fn is_demo() -> bool {
+    std::env::var("DEMO_MODE").map(|v| v == "true" || v == "1").unwrap_or(false)
+        || !std::path::Path::new("/dev/kvm").exists()
+}
 
 fn err(code: StatusCode, msg: impl ToString) -> (StatusCode, Json<Value>) {
     (code, Json(json!({ "error": msg.to_string() })))
 }
-
 fn ok(v: impl serde::Serialize) -> Json<Value> {
     Json(serde_json::to_value(v).unwrap_or(json!({})))
 }
 
-// ── VM handlers ───────────────────────────────────────────────────────────
+// ── Demo mode handlers ────────────────────────────────────────────────────
 
-async fn create_vm(Json(req): Json<CreateVmRequest>)
+async fn demo_create_vm(State(store): State<SharedDemo>, Json(req): Json<CreateVmRequest>)
     -> impl IntoResponse
 {
+    let vm = store.write().unwrap().create_vm(
+        req.name.clone(),
+        req.cpus.unwrap_or(1),
+        req.mem_mib.unwrap_or(256),
+    );
+    (StatusCode::CREATED, ok(vm)).into_response()
+}
+
+async fn demo_list_vms(State(store): State<SharedDemo>) -> Json<Value> {
+    store.write().unwrap().transition_booting();
+    let vms = store.read().unwrap().list_vms();
+    Json(json!(vms))
+}
+
+async fn demo_get_vm(State(store): State<SharedDemo>, Path(id): Path<String>)
+    -> impl IntoResponse
+{
+    store.write().unwrap().transition_booting();
+    match store.read().unwrap().get_vm(&id) {
+        Some(vm) => ok(vm).into_response(),
+        None     => err(StatusCode::NOT_FOUND, format!("VM {id} not found")).into_response(),
+    }
+}
+
+async fn demo_stop_vm(State(store): State<SharedDemo>, Path(id): Path<String>)
+    -> impl IntoResponse
+{
+    store.write().unwrap().stop_vm(&id);
+    match store.read().unwrap().get_vm(&id) {
+        Some(vm) => ok(vm).into_response(),
+        None     => err(StatusCode::NOT_FOUND, "not found").into_response(),
+    }
+}
+
+async fn demo_start_vm(State(store): State<SharedDemo>, Path(id): Path<String>)
+    -> impl IntoResponse
+{
+    store.write().unwrap().start_vm(&id);
+    match store.read().unwrap().get_vm(&id) {
+        Some(vm) => ok(vm).into_response(),
+        None     => err(StatusCode::NOT_FOUND, "not found").into_response(),
+    }
+}
+
+async fn demo_delete_vm(State(store): State<SharedDemo>, Path(id): Path<String>)
+    -> impl IntoResponse
+{
+    store.write().unwrap().delete_vm(&id);
+    (StatusCode::NO_CONTENT, "").into_response()
+}
+
+async fn demo_nodes(State(store): State<SharedDemo>) -> Json<Value> {
+    store.write().unwrap().transition_booting();
+    let node = store.read().unwrap().node_metrics();
+    Json(json!([node]))
+}
+
+async fn demo_cluster(State(store): State<SharedDemo>) -> Json<Value> {
+    store.write().unwrap().transition_booting();
+    let vms  = store.read().unwrap().list_vms();
+    let node = store.read().unwrap().node_metrics();
+    let sigma = (node.cpu_usage_pct / 100.0 - 0.5).abs() * 0.2;
+    Json(json!({
+        "nodes": [node], "vms": vms,
+        "balanceSigma": sigma, "drsMode": "FullyAutomated",
+        "totalCpuPct": node.cpu_usage_pct, "xdpThroughputGbps": 2.4,
+        "xdpDropsTotal": 0
+    }))
+}
+
+// ── Real mode handlers ────────────────────────────────────────────────────
+
+async fn create_vm(Json(req): Json<CreateVmRequest>) -> impl IntoResponse {
     let hostname = sysinfo::System::host_name().unwrap_or_else(|| "node".into());
     match spawn_vm(req, &hostname).await {
-        Ok(state) => (StatusCode::CREATED, ok(state)).into_response(),
-        Err(e)    => err(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        Ok(s)  => (StatusCode::CREATED, ok(s)).into_response(),
+        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
 }
 
 async fn list_vms() -> Json<Value> {
     let mut vms = VmState::list_all();
-    // Reconcile: mark as STOPPED any VM whose process died
     for vm in &mut vms { vm.reconcile(); }
     Json(json!(vms))
 }
 
 async fn get_vm(Path(id): Path<String>) -> impl IntoResponse {
     match VmState::load(&id) {
-        Ok(mut state) => {
-            state.reconcile();
-            ok(state).into_response()
-        }
-        Err(_) => err(StatusCode::NOT_FOUND, format!("VM {id} not found")).into_response(),
+        Ok(mut s) => { s.reconcile(); ok(s).into_response() }
+        Err(_)    => err(StatusCode::NOT_FOUND, "not found").into_response(),
     }
 }
 
-async fn start_vm(Path(id): Path<String>) -> impl IntoResponse {
-    let Ok(state) = VmState::load(&id) else {
-        return err(StatusCode::NOT_FOUND, format!("VM {id} not found")).into_response();
-    };
-    if state.status == VmStatus::Running {
-        return err(StatusCode::CONFLICT, "VM is already running").into_response();
+async fn stop_vm_h(Path(id): Path<String>) -> impl IntoResponse {
+    match VmState::load(&id) {
+        Ok(mut s) => match stop_vm(&mut s) {
+            Ok(_)  => ok(s).into_response(),
+            Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        },
+        Err(_) => err(StatusCode::NOT_FOUND, "not found").into_response(),
     }
+}
+
+async fn start_vm_h(Path(id): Path<String>) -> impl IntoResponse {
+    let Ok(state) = VmState::load(&id) else {
+        return err(StatusCode::NOT_FOUND, "not found").into_response();
+    };
     let req = CreateVmRequest {
-        name:    state.name.clone(),
-        cpus:    Some(state.cpus),
-        mem_mib: Some(state.mem_mib),
-        kernel:  Some(state.kernel.clone()),
-        disk:    state.disk.clone(),
-        uplink:  Some(state.uplink.clone()),
-        cmdline: None,
-        labels:  Some(state.labels.clone()),
+        name: state.name, cpus: Some(state.cpus),
+        mem_mib: Some(state.mem_mib), kernel: Some(state.kernel),
+        disk: state.disk, uplink: Some(state.uplink),
+        cmdline: None, labels: Some(state.labels),
     };
     let hostname = sysinfo::System::host_name().unwrap_or_else(|| "node".into());
     match spawn_vm(req, &hostname).await {
-        Ok(new_state) => ok(new_state).into_response(),
+        Ok(s)  => ok(s).into_response(),
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
 }
 
-async fn stop_vm_handler(Path(id): Path<String>) -> impl IntoResponse {
-    let Ok(mut state) = VmState::load(&id) else {
-        return err(StatusCode::NOT_FOUND, format!("VM {id} not found")).into_response();
-    };
-    match stop_vm(&mut state) {
-        Ok(_)  => ok(state).into_response(),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+async fn force_stop_h(Path(id): Path<String>) -> impl IntoResponse {
+    match VmState::load(&id) {
+        Ok(mut s) => match kill_vm(&mut s) {
+            Ok(_)  => ok(s).into_response(),
+            Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        },
+        Err(_) => err(StatusCode::NOT_FOUND, "not found").into_response(),
     }
 }
 
-async fn force_stop_vm(Path(id): Path<String>) -> impl IntoResponse {
-    let Ok(mut state) = VmState::load(&id) else {
-        return err(StatusCode::NOT_FOUND, format!("VM {id} not found")).into_response();
-    };
-    match kill_vm(&mut state) {
-        Ok(_)  => ok(state).into_response(),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
-    }
-}
-
-async fn delete_vm_handler(Path(id): Path<String>) -> impl IntoResponse {
-    // Stop first if running
-    if let Ok(mut state) = VmState::load(&id) {
-        if state.status == VmStatus::Running {
-            let _ = kill_vm(&mut state);
-        }
+async fn delete_vm_h(Path(id): Path<String>) -> impl IntoResponse {
+    if let Ok(mut s) = VmState::load(&id) {
+        if s.status == VmStatus::Running { let _ = kill_vm(&mut s); }
     }
     match delete_vm(&id) {
         Ok(_)  => (StatusCode::NO_CONTENT, "").into_response(),
@@ -132,89 +177,51 @@ async fn delete_vm_handler(Path(id): Path<String>) -> impl IntoResponse {
 }
 
 async fn vm_logs(Path(id): Path<String>) -> impl IntoResponse {
-    let log_path = format!("/var/run/caiman/{id}.log");
-    match std::fs::read_to_string(&log_path) {
-        Ok(content) => {
-            let lines: Vec<&str> = content.lines().rev().take(200).collect();
-            ok(lines).into_response()
-        }
-        Err(_) => ok(Vec::<String>::new()).into_response(),
+    let path = format!("/var/run/caiman/{id}.log");
+    match std::fs::read_to_string(&path) {
+        Ok(c) => { let lines: Vec<&str> = c.lines().rev().take(200).collect(); ok(lines).into_response() }
+        Err(_)=> ok(Vec::<String>::new()).into_response(),
     }
 }
 
-// ── Cluster / node handlers ───────────────────────────────────────────────
-
-async fn get_nodes() -> Json<Value> {
+async fn get_nodes_real() -> Json<Value> {
     let vms = VmState::list_all();
-    let metrics = NodeMetrics::collect(vms.len());
-    Json(json!([metrics]))
+    Json(json!([NodeMetrics::collect(vms.len())]))
 }
 
-async fn get_cluster() -> Json<Value> {
+async fn get_cluster_real() -> Json<Value> {
     let mut vms = VmState::list_all();
     for vm in &mut vms { vm.reconcile(); }
-    let metrics = NodeMetrics::collect(vms.len());
-    let total_cpu = metrics.cpu_usage_pct;
-    let mem_pct = if metrics.mem_total_mib > 0 {
-        metrics.mem_used_mib as f64 / metrics.mem_total_mib as f64
-    } else { 0.0 };
-    let sigma = (total_cpu / 100.0 - 0.5).abs() * 0.2;
-
+    let m = NodeMetrics::collect(vms.len());
+    let sigma = (m.cpu_usage_pct / 100.0 - 0.5).abs() * 0.2;
     Json(json!({
-        "nodes": [metrics],
-        "vms":   vms,
-        "balanceSigma":       sigma,
-        "drsMode":            "FullyAutomated",
-        "totalCpuPct":        total_cpu,
-        "totalMemPct":        mem_pct * 100.0,
-        "xdpThroughputGbps":  0.0,
-        "xdpDropsTotal":      0
+        "nodes": [m], "vms": vms,
+        "balanceSigma": sigma, "drsMode": "FullyAutomated",
+        "totalCpuPct": m.cpu_usage_pct, "xdpThroughputGbps": 0.0
     }))
 }
 
-async fn drs_recommendations() -> Json<Value> {
-    // Real DRS logic lives in caiman-drs; API just proxies it
-    // For now return empty list — DRS service fills this
-    Json(json!({ "recommendations": [], "balanceSigma": 0.0 }))
+async fn migrate_vm(Path(id): Path<String>, Json(body): Json<Value>) -> impl IntoResponse {
+    let dest = body.get("destination").and_then(|v| v.as_str()).unwrap_or("localhost").to_string();
+    let status = tokio::process::Command::new("caiman-livemig")
+        .args(["--vm-id", &id, "--destination", &dest])
+        .status().await;
+    match status {
+        Ok(s) if s.success() => ok(json!({"status":"migrated","destination":dest})).into_response(),
+        _ => err(StatusCode::INTERNAL_SERVER_ERROR, "migration failed").into_response(),
+    }
 }
 
 async fn health() -> Json<Value> {
-    Json(json!({
-        "status":  "ok",
-        "version": env!("CARGO_PKG_VERSION"),
-        "service": "caiman-api"
-    }))
+    let demo = is_demo();
+    Json(json!({ "status": "ok", "version": env!("CARGO_PKG_VERSION"), "demo": demo }))
+}
+
+async fn drs() -> Json<Value> {
+    Json(json!({ "recommendations": [], "balanceSigma": 0.0 }))
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────
-
-async fn migrate_vm(
-    Path(id): Path<String>,
-    Json(body): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    let dest = body.get("destination")
-        .and_then(|v| v.as_str())
-        .unwrap_or("localhost")
-        .to_string();
-
-    // Spawn caiman-livemig as subprocess
-    let status = tokio::process::Command::new("caiman-livemig")
-        .args(["--vm-id", &id, "--destination", &dest])
-        .status()
-        .await;
-
-    match status {
-        Ok(s) if s.success() =>
-            ok(serde_json::json!({"status": "migrated", "destination": dest})).into_response(),
-        Ok(s) =>
-            err(StatusCode::INTERNAL_SERVER_ERROR,
-                format!("migration failed with exit code {:?}", s.code())).into_response(),
-        Err(e) =>
-            err(StatusCode::INTERNAL_SERVER_ERROR,
-                format!("failed to spawn caiman-livemig: {e}")).into_response(),
-    }
-}
-
 
 #[tokio::main]
 async fn main() {
@@ -222,28 +229,46 @@ async fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    // Ensure state directory exists
-    let _ = std::fs::create_dir_all("/var/run/caiman");
+    let demo_mode = is_demo();
+    info!("caiman-api v{} — demo_mode={}", env!("CARGO_PKG_VERSION"), demo_mode);
 
-    let app = Router::new()
-        // Health
-        .route("/health", get(health))
-        // VM lifecycle
-        .route("/api/vms",                    get(list_vms).post(create_vm))
-        .route("/api/vms/:id",                get(get_vm).delete(delete_vm_handler))
-        .route("/api/vms/:id/start",          post(start_vm))
-        .route("/api/vms/:id/stop",           post(stop_vm_handler))
-        .route("/api/vms/:id/force-stop",     post(force_stop_vm))
-        .route("/api/vms/:id/migrate",        post(migrate_vm))
-        .route("/api/vms/:id/console",        get(vm_logs))
-        // Cluster
-        .route("/api/cluster",               get(get_cluster))
-        .route("/api/nodes",                 get(get_nodes))
-        .route("/api/drs/recommendations",   get(drs_recommendations))
-        .layer(CorsLayer::permissive());
-
+    let cors = CorsLayer::permissive();
     let addr: SocketAddr = "0.0.0.0:8765".parse().unwrap();
-    info!("caiman-api v0.5.0 listening on {addr}");
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+
+    if demo_mode {
+        let store: SharedDemo = Arc::new(RwLock::new(DemoStore::new()));
+        let app = Router::new()
+            .route("/health",                         get(health))
+            .route("/api/vms",                        get(demo_list_vms).post(demo_create_vm))
+            .route("/api/vms/:id",                    get(demo_get_vm).delete(demo_delete_vm))
+            .route("/api/vms/:id/start",              post(demo_start_vm))
+            .route("/api/vms/:id/stop",               post(demo_stop_vm))
+            .route("/api/vms/:id/force-stop",         post(demo_stop_vm))
+            .route("/api/nodes",                      get(demo_nodes))
+            .route("/api/cluster",                    get(demo_cluster))
+            .route("/api/drs/recommendations",        get(drs))
+            .layer(cors)
+            .with_state(store);
+        info!("DEMO MODE — listening on {addr}");
+        let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+        axum::serve(listener, app).await.unwrap();
+    } else {
+        let _ = std::fs::create_dir_all("/var/run/caiman");
+        let app = Router::new()
+            .route("/health",                         get(health))
+            .route("/api/vms",                        get(list_vms).post(create_vm))
+            .route("/api/vms/:id",                    get(get_vm).delete(delete_vm_h))
+            .route("/api/vms/:id/start",              post(start_vm_h))
+            .route("/api/vms/:id/stop",               post(stop_vm_h))
+            .route("/api/vms/:id/force-stop",         post(force_stop_h))
+            .route("/api/vms/:id/console",            get(vm_logs))
+            .route("/api/vms/:id/migrate",            post(migrate_vm))
+            .route("/api/nodes",                      get(get_nodes_real))
+            .route("/api/cluster",                    get(get_cluster_real))
+            .route("/api/drs/recommendations",        get(drs))
+            .layer(cors);
+        info!("PRODUCTION MODE — listening on {addr}");
+        let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+        axum::serve(listener, app).await.unwrap();
+    }
 }

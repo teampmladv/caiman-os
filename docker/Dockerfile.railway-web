@@ -1,0 +1,17 @@
+# docker/Dockerfile.railway-web
+# Sirve caimanos.com — Railway frontend → api.caimanos.com (KVM server)
+
+FROM nginx:1.25-alpine
+
+COPY website/index.html /usr/share/nginx/html/index.html
+
+RUN printf 'server {\n\
+    listen 80;\n\
+    root /usr/share/nginx/html;\n\
+    index index.html;\n\
+    gzip on;\n\
+    location / { try_files $uri /index.html; }\n\
+    location /health { return 200 "ok"; add_header Content-Type text/plain; }\n\
+}\n' > /etc/nginx/conf.d/default.conf
+
+EXPOSE 80

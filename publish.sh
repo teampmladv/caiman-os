@@ -50,7 +50,7 @@ echo
 echo -e "${GRN}[4/6]${NC} Creating initial commit"
 git commit -m "feat: Caimán OS v0.1.0 — initial commit
 
-🐊 Born in Cuba. Built for the cloud.
+🐊 Named after the Cuban crocodile. Built for the cloud.
 
 Stack completo:
 - kernel/caiman_net  — módulo kernel C + XDP/eBPF (sin QEMU)

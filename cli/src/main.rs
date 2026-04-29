@@ -37,7 +37,7 @@ use output::OutputFormat;
     about   = "🐊 Caimán OS — Hypervisor management CLI",
     long_about = "Manage VMs, DRS, micro-segmentation, storage and GPU\
                   from the terminal.\n\
-                  Born in Cuba. Built for the cloud.",
+                  Named after the Cuban crocodile. Built for the cloud.",
     propagate_version = true,
 )]
 pub struct Cli {

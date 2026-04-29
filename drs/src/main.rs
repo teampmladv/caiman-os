@@ -96,7 +96,7 @@ async fn main() -> Result<()> {
         .route("/recommendations", get(recommendations_handler))
         .with_state((app_cluster, app_cfg));
 
-    let addr = "0.0.0.0:8765";
+    let addr = "0.0.0.0:8766";
     info!("DRS HTTP server on {addr}");
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
