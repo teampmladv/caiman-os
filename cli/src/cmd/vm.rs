@@ -131,7 +131,6 @@ pub async fn run(cmd: VmCmd, client: &Client, out: OutputFormat) -> Result<()> {
         VmCmd::Start { vm_id } => {
             let pb = spinner(&format!("Starting {vm_id}…"));
             let res = client.post_empty(&format!("/api/vms/{vm_id}/start")).await?;
-            pb.finish_and_clear();
             println!("{} {vm_id} started", output::bright("✓"));
         }
 
@@ -143,7 +142,6 @@ pub async fn run(cmd: VmCmd, client: &Client, out: OutputFormat) -> Result<()> {
             };
             let pb = spinner(&format!("Stopping {vm_id}…"));
             client.post_empty(&path).await?;
-            pb.finish_and_clear();
             println!("{} {vm_id} stopped", output::bright("✓"));
         }
 
@@ -152,7 +150,6 @@ pub async fn run(cmd: VmCmd, client: &Client, out: OutputFormat) -> Result<()> {
             client.post_empty(&format!("/api/vms/{vm_id}/stop")).await?;
             tokio::time::sleep(Duration::from_secs(2)).await;
             client.post_empty(&format!("/api/vms/{vm_id}/start")).await?;
-            pb.finish_and_clear();
             println!("{} {vm_id} restarted", output::bright("✓"));
         }
 
@@ -175,8 +172,7 @@ pub async fn run(cmd: VmCmd, client: &Client, out: OutputFormat) -> Result<()> {
                     let pct    = vm["migrating"]["progressPct"].as_f64().unwrap_or(0.0);
                     let phase  = vm["migrating"]["phase"].as_str().unwrap_or("").to_string();
 
-                    pb.set_position(pct as u64);
-                    let _ = (phase.clone());
+                    let _ = phase.clone();
 
                     if status != "MIGRATING" || pct >= 100.0 {
                         done = true;
@@ -233,7 +229,6 @@ pub async fn run(cmd: VmCmd, client: &Client, out: OutputFormat) -> Result<()> {
 
             let pb = spinner("Creating VM…");
             let res = client.post("/api/vms", &body).await?;
-            pb.finish_and_clear();
             let id = res["id"].as_str().unwrap_or("?");
             println!("{} VM {} created — {}", output::bright("✓"), output::white(&name), output::dim(id));
         }
