@@ -16,7 +16,7 @@ use anyhow::{Context, Result};
 use tokio::process::Command;
 use tracing::info;
 
-use super::{GpuDevice, GpuAllocation};
+use crate::{GpuDevice, GpuAllocation};
 
 pub async fn allocate(gpu: GpuDevice, vm_id: u32) -> Result<GpuAllocation> {
     info!("GPU passthrough: {} → vm_{vm_id}", gpu.pci_address);

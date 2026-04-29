@@ -15,7 +15,7 @@ use tokio::process::Command;
 use tracing::info;
 use uuid::Uuid;
 
-use super::{GpuDevice, GpuAllocation};
+use crate::{GpuDevice, GpuAllocation};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VgpuProfile {
