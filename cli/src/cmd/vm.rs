@@ -166,13 +166,7 @@ pub async fn run(cmd: VmCmd, client: &Client, out: OutputFormat) -> Result<()> {
             ).await?;
 
             if wait {
-                let pb = ProgressBar::new(100);
-                pb.set_style(ProgressStyle::default_bar()
-                    .template("{spinner:.green} [{bar:40.green/dim}] {pos}% {msg}")
-                    .unwrap()
-                    .progress_chars("█▉▊▋▌▍▎▏ "));
-
-                // Poll for progress
+                // Poll for migration progress
                 let mut done = false;
                 while !done {
                     tokio::time::sleep(Duration::from_secs(2)).await;
@@ -182,13 +176,13 @@ pub async fn run(cmd: VmCmd, client: &Client, out: OutputFormat) -> Result<()> {
                     let phase  = vm["migrating"]["phase"].as_str().unwrap_or("").to_string();
 
                     pb.set_position(pct as u64);
-                    pb.set_message(phase.clone());
+                    let _ = (phase.clone());
 
                     if status != "MIGRATING" || pct >= 100.0 {
                         done = true;
                     }
                 }
-                pb.finish_with_message("done");
+                println!("done");
                 println!("{} Migration complete", output::bright("✓"));
             } else {
                 println!("{} Migration started. Use {} to monitor.",
@@ -247,12 +241,13 @@ pub async fn run(cmd: VmCmd, client: &Client, out: OutputFormat) -> Result<()> {
         VmCmd::Delete { vm_id, confirm } => {
             if !confirm {
                 // Interactive confirmation
-                let ok = inquire::Confirm::new(
-                    &format!("Permanently delete {vm_id}? This cannot be undone.")
-                )
-                .with_default(false)
-                .prompt()?;
-                if !ok { println!("{} Aborted", output::amber("!")); return Ok(()); }
+                print!("Permanently delete {vm_id}? [y/N] ");
+                { use std::io::Write; std::io::stdout().flush()?; }
+                let mut _ans = String::new();
+                std::io::stdin().read_line(&mut _ans)?;
+                if !_ans.trim().eq_ignore_ascii_case("y") {
+                    println!("{} Aborted", output::amber("!")); return Ok(());
+                }
             }
             client.delete(&format!("/api/vms/{vm_id}")).await?;
             println!("{} {vm_id} deleted", output::bright("✓"));
@@ -327,8 +322,7 @@ async fn live_top(vm_id: &str, client: &Client) -> Result<()> {
         let rx  = vm["netRxMbps"].as_f64().unwrap_or(0.0);
         let tx  = vm["netTxMbps"].as_f64().unwrap_or(0.0);
 
-        execute!(stdout(), cursor::MoveToColumn(0), terminal::Clear(terminal::ClearType::CurrentLine))?;
-        print!("  {} {} │ CPU {} {} │ MEM {}/{} GiB │ RX {:.1} TX {:.1} Gbps",
+        print!("\r"  {} {} │ CPU {} {} │ MEM {}/{} GiB │ RX {:.1} TX {:.1} Gbps",
             output::bright(vm_id),
             color_status(vm["status"].as_str().unwrap_or("")),
             mini_bar(cpu, 10), color_pct(cpu),
@@ -340,12 +334,6 @@ async fn live_top(vm_id: &str, client: &Client) -> Result<()> {
     }
 }
 
-fn spinner(msg: &str) -> ProgressBar {
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(ProgressStyle::default_spinner()
-        .tick_strings(&["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"])
-        .template("{spinner:.green} {msg}").unwrap());
-    pb.enable_steady_tick(Duration::from_millis(80));
-    pb.set_message(msg.to_string());
-    pb
+fn spinner(msg: &str) {
+    println!("  ⠋ {msg}...");
 }

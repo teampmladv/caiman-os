@@ -93,10 +93,11 @@ pub async fn run(cmd: DrsCmd, client: &Client, out: OutputFormat) -> Result<()> 
                 return Ok(());
             }
             if all {
-                let confirm = inquire::Confirm::new(
-                    "Execute ALL DRS recommendations? Multiple VMs will experience brief downtime."
-                ).with_default(false).prompt()?;
-                if !confirm { return Ok(()); }
+                print!("Execute ALL DRS recommendations? [y/N] ");
+                { use std::io::Write; std::io::stdout().flush()?; }
+                let mut _a = String::new();
+                std::io::stdin().read_line(&mut _a)?;
+                if !_a.trim().eq_ignore_ascii_case("y") { return Ok(()); }
                 client.post_empty("/api/drs/execute-all").await?;
                 println!("{} All DRS migrations started", output::bright("✓"));
             } else if let Some(id) = vm_id {

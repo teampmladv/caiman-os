@@ -110,12 +110,6 @@ enum Commands {
     #[command(subcommand)]
     Config(cmd::config::ConfigCmd),
 
-    /// Generate shell completions
-    Completions {
-        #[arg(value_enum)]
-        shell: Shell,
-    },
-
     /// API health check
     Ping,
 }
