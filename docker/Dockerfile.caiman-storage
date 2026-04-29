@@ -1,0 +1,13 @@
+FROM debian:bookworm-slim
+LABEL org.opencontainers.image.title="caiman-storage"
+LABEL org.opencontainers.image.source="https://github.com/teampmladv/caiman-os"
+
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+    libssl3 ca-certificates curl util-linux && rm -rf /var/lib/apt/lists/*
+
+COPY target/release/caiman-storage /usr/local/bin/caiman-storage
+RUN chmod +x /usr/local/bin/caiman-storage
+RUN mkdir -p /var/lib/caiman/vols
+
+EXPOSE 8770
+ENTRYPOINT ["/usr/local/bin/caiman-storage"]

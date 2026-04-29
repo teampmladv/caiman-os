@@ -1,0 +1,1 @@
+//! vsan/nvmeof.rs — stub
