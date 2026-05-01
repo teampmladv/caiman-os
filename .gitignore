@@ -66,3 +66,6 @@ Thumbs.db
 
 # ── Generated ─────────────────────────────────────────────────────────────
 docs/api/
+*.iso
+*.iso.sha256
+caiman-os-github.tar.gz
