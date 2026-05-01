@@ -220,6 +220,37 @@ ok "GRUB EFI image built"
 # ── Pack ISO ──────────────────────────────────────────────────────────────
 step "Creating ISO"
 
+# Build BIOS boot image with GRUB
+$GRUB_MKSTANDALONE \
+    --format=i386-pc \
+    --output="$ISO_ROOT/boot/grub/bios.img" \
+    --modules="biosdisk part_gpt part_msdos fat iso9660" \
+    "boot/grub/grub.cfg=$ISO_ROOT/boot/grub/grub.cfg" || true
+
+# Create hybrid CD boot catalog for BIOS
+if [[ -f "$ISO_ROOT/boot/grub/bios.img" ]]; then
+    # Split bios.img into cdboot.img (512B) + core.img (rest)
+    dd if="$ISO_ROOT/boot/grub/bios.img" bs=512 count=1        of="$ISO_ROOT/boot/grub/cdboot.img" 2>/dev/null
+    dd if="$ISO_ROOT/boot/grub/bios.img" bs=512 skip=1        of="$ISO_ROOT/boot/grub/core.img" 2>/dev/null
+fi
+
+xorriso -as mkisofs \
+    -iso-level 3 \
+    -full-iso9660-filenames \
+    -volid "CAIMAN-OS-${VERSION}" \
+    -b boot/grub/cdboot.img \
+    -no-emul-boot \
+    -boot-load-size 4 \
+    -boot-info-table \
+    --grub2-boot-info \
+    --grub2-mbr "$ISO_ROOT/boot/grub/core.img" \
+    -eltorito-alt-boot \
+    -e boot/grub/efiboot.img \
+    -no-emul-boot \
+    -isohybrid-gpt-basdat \
+    -append_partition 2 0xef "$ISO_ROOT/boot/grub/efiboot.img" \
+    -output "$ISO_NAME" \
+    "$ISO_ROOT" 2>/dev/null || \
 xorriso -as mkisofs \
     -iso-level 3 \
     -full-iso9660-filenames \
