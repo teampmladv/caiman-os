@@ -1,16 +1,19 @@
 <div align="center">
 
-<img src="https://caimanos.com/logo.png" alt="Caimán OS" width="80" height="80">
+```
+🐊 CAIMÁN OS
+```
 
 # 🐊 Caimán OS
 
 **Open-source hyperconverged infrastructure without QEMU.**
 
 [![CI](https://github.com/teampmladv/caiman-os/actions/workflows/ci.yml/badge.svg)](https://github.com/teampmladv/caiman-os/actions)
-[![Release](https://img.shields.io/github/v/release/teampmladv/caiman-os?color=22c55e)](https://github.com/teampmladv/caiman-os/releases)
+[![Release](https://img.shields.io/badge/release-v1.1.0-22c55e)](https://github.com/teampmladv/caiman-os/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-22c55e)](LICENSE)
 [![Demo](https://img.shields.io/badge/demo-live-22c55e)](https://caimanos.com)
-[![Docs](https://img.shields.io/badge/docs-caimanos.com-22c55e)](https://caimanos.com/docs)
+[![Docs](https://img.shields.io/badge/docs-caimanos.com-22c55e)](https://caimanos.com)
+[![ISO](https://img.shields.io/badge/ISO-58MB-22c55e)](https://github.com/teampmladv/caiman-os/releases/tag/v1.1.0)
 
 [**Live Demo**](https://caimanos.com) · [**Documentation**](docs/) · [**Install**](#-install) · [**API Reference**](docs/api/rest.md)
 
