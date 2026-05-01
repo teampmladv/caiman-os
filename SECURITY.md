@@ -4,7 +4,7 @@
 
 **No abrir issues públicos para vulnerabilidades de seguridad.**
 
-Enviar a: security@caiman.io
+Enviar a: team@caimanos.com
 
 Incluir:
 - Descripción de la vulnerabilidad
