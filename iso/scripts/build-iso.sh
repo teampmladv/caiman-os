@@ -39,9 +39,27 @@ echo -e "\n${BRT}🐊 Building Caimán OS ${VERSION} ISO${NC}\n"
 # ── Dependencies ──────────────────────────────────────────────────────────
 step "Checking dependencies"
 
-for cmd in xorriso grub-mkstandalone mksquashfs curl; do
-    command -v "$cmd" &>/dev/null || die "$cmd not found — install: apt-get install xorriso grub-efi-amd64-bin squashfs-tools"
+# Install missing deps automatically
+if command -v dnf &>/dev/null || command -v yum &>/dev/null; then
+    PKG="dnf"
+    command -v dnf &>/dev/null || PKG="yum"
+    $PKG install -y -q xorriso grub2-efi-x64-modules grub2-tools-extra         squashfs-tools curl mtools 2>/dev/null || true
+    # grub-mkstandalone is in grub2-tools-extra on CentOS
+    # symlink if needed
+    if ! command -v grub-mkstandalone &>/dev/null; then
+        ln -sf /usr/bin/grub2-mkstandalone /usr/local/bin/grub-mkstandalone 2>/dev/null || true
+    fi
+elif command -v apt-get &>/dev/null; then
+    apt-get install -y -qq xorriso grub-efi-amd64-bin grub-pc-bin         squashfs-tools mtools curl isolinux 2>/dev/null || true
+fi
+
+for cmd in xorriso mksquashfs curl; do
+    command -v "$cmd" &>/dev/null || die "$cmd not found"
 done
+
+# grub-mkstandalone or grub2-mkstandalone
+GRUB_MKSTANDALONE=$(command -v grub-mkstandalone || command -v grub2-mkstandalone || echo "")
+[ -n "$GRUB_MKSTANDALONE" ] || die "grub-mkstandalone not found — dnf install grub2-tools-extra"
 ok "All dependencies present"
 
 # ── Prepare directories ───────────────────────────────────────────────────
@@ -192,7 +210,7 @@ cp "$SCRIPT_DIR/../grub/grub.cfg" "$ISO_ROOT/boot/grub/grub.cfg"
 ok "GRUB config installed"
 
 # ── Build GRUB EFI image ──────────────────────────────────────────────────
-grub-mkstandalone \
+$GRUB_MKSTANDALONE \
     --format=x86_64-efi \
     --output="$ISO_ROOT/boot/grub/efiboot.img" \
     --modules="part_gpt part_msdos fat iso9660 all_video" \
