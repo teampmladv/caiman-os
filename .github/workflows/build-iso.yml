@@ -1,0 +1,56 @@
+name: Build ISO
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version'
+        required: true
+        default: '1.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  iso:
+    name: Build Caimán OS ISO
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            xorriso grub-efi-amd64-bin grub-pc-bin \
+            squashfs-tools mtools curl isolinux
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            target/
+          key: iso-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Build Rust binaries
+        run: cargo build --release --workspace
+
+      - name: Build ISO
+        run: |
+          VERSION="${{ github.ref_name || inputs.version }}"
+          VERSION="${VERSION#v}"
+          sudo ./iso/scripts/build-iso.sh "$VERSION"
+
+      - name: Upload ISO to release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            caiman-os-*.iso
+            caiman-os-*.sha256
