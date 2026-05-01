@@ -4,6 +4,37 @@ All notable changes to Caimán OS are documented here.
 
 ---
 
+## [1.1.0] — 2026-05-01 — Bootable ISO
+
+### 🐊 First bootable ISO release
+
+Install Caimán OS on bare metal with a single USB drive — like ESXi, but 6× smaller and $0 license.
+
+#### What's new
+- `caiman-os-1.1.0-x86_64.iso` — 58 MB bootable ISO (ESXi: 350MB, Proxmox: 1.2GB)
+- `iso/installer/caiman-install.sh` — TUI installer with hardware detection
+- `iso/grub/grub.cfg` — GRUB2 EFI boot menu (Install / Live / Debug)
+- `iso/scripts/build-iso.sh` — Alpine-based ISO builder
+- `.github/workflows/build-iso.yml` — Automated ISO build on release
+
+#### ISO contents
+- Alpine Linux 3.19 base (musl libc, BusyBox)
+- All Caimán OS binaries (caiman-vmm, caiman-api, caiman-drs, ...)
+- Docker + docker-compose pre-installed
+- nginx pre-installed
+- OpenRC init system
+- GRUB2 EFI bootloader
+
+#### Installer features
+- CPU virtualization detection (VT-x / AMD-V)
+- Disk selection with sizes and models
+- DHCP or static IP configuration
+- Standalone or cluster join mode
+- Automatic partitioning (GPT + EFI)
+- GRUB2 installation
+
+---
+
 ## [1.0.0] — 2026-04-29 — Production GA
 
 ### 🎉 First stable release

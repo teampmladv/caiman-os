@@ -104,6 +104,25 @@ All benchmarks on a single node: AMD EPYC 7443P, 256 GiB RAM, 2× Samsung PM9A3 
 
 ---
 
+## Download ISO
+
+**Caimán OS v1.1.0 — 58MB** (vs ESXi 350MB, Proxmox 1.2GB)
+
+| File | Size | SHA256 |
+|------|------|--------|
+| [caiman-os-1.1.0-x86_64.iso](https://github.com/teampmladv/caiman-os/releases/download/v1.1.0/caiman-os-1.1.0-x86_64.iso) | 58 MB | `e8d49c21...cd8a01f` |
+
+```bash
+# Flash to USB
+dd if=caiman-os-1.1.0-x86_64.iso of=/dev/sdX bs=4M status=progress
+
+# Test with QEMU
+qemu-system-x86_64 -cdrom caiman-os-1.1.0-x86_64.iso -m 4G -enable-kvm
+
+# Or install with one command (on existing Linux)
+curl -fsSL https://caimanos.com/install.sh | sudo bash
+```
+
 ## Install
 
 ```bash
@@ -198,6 +217,7 @@ docker pull ghcr.io/teampmladv/caiman-ui:1.0.0     # 552 KB
 | [VMM internals](docs/architecture/vmm.md) | How caiman-vmm works without QEMU |
 | [XDP networking](docs/architecture/networking.md) | caiman_net.ko, XDP < 8µs, micro-segmentation |
 | [Live migration](docs/architecture/livemig.md) | Pre-copy algorithm, BPF map transfer, <200ms |
+| [ISO Installation](docs/operations/iso.md) | Bootable ISO — flash to USB, TUI installer |
 | [Installation guide](docs/operations/install.md) | Bare metal, VPS, PXE, iDRAC/BMC |
 | [API reference](docs/api/rest.md) | All REST endpoints with examples |
 | [Development setup](docs/development/setup.md) | Build from source, run tests |
@@ -213,8 +233,9 @@ docker pull ghcr.io/teampmladv/caiman-ui:1.0.0     # 552 KB
 - [x] v0.7.0 · Live migration pre-copy < 200ms
 - [x] v0.8.0 · GPU passthrough + NVIDIA MIG + vGPU
 - [x] v0.9.0 · VSAN distributed storage + vVols
-- [x] **v1.0.0 · Production GA** ← current
-- [ ] v1.1.0 · Multi-cluster federation
+- [x] **v1.0.0 · Production GA**
+- [x] **v1.1.0 · Bootable ISO** ← current
+- [ ] v1.2.0 · Multi-cluster federation
 - [ ] v1.2.0 · Terraform provider + Ansible collection
 - [ ] v1.3.0 · eBPF service mesh (no Envoy/Istio)
 - [ ] v2.0.0 · Caimán Cloud (SaaS managed HCI)
