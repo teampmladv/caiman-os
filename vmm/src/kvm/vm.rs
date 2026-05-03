@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use kvm_bindings::{kvm_pit_config, KVM_PIT_SPEAKER_DUMMY};
 use kvm_ioctls::{Kvm, VmFd};
 use std::os::unix::io::AsRawFd;
+use std::os::unix::io::AsRawFd as _;
 
 use super::memory::GuestMemory;
 
@@ -20,9 +21,22 @@ impl Vm {
 
         let fd = kvm.create_vm().context("KVM_CREATE_VM")?;
 
-        // AMD requires TSS address before irqchip creation
-        // Without this, KVM_RUN returns ENOSPC on AMD processors
+        // AMD requires TSS + identity map before irqchip creation
+        // Without both, KVM_RUN returns ENOSPC on AMD processors
         fd.set_tss_address(0xfffbd000).context("KVM_SET_TSS_ADDRESS")?;
+        unsafe {
+            // KVM_SET_IDENTITY_MAP_ADDR — required on AMD alongside TSS
+            let identity_addr: u64 = 0xfffbc000;
+            let ret = libc::ioctl(
+                fd.as_raw_fd(),
+                0x4008_ae48u64 as libc::c_ulong, // KVM_SET_IDENTITY_MAP_ADDR
+                &identity_addr as *const u64,
+            );
+            if ret < 0 {
+                // Not fatal — some kernels don't support this ioctl
+                tracing::warn!("KVM_SET_IDENTITY_MAP_ADDR not supported (ok on Intel)");
+            }
+        }
 
         // In-kernel irqchip: no userspace interrupt emulation needed
         fd.create_irq_chip().context("KVM_CREATE_IRQCHIP")?;
