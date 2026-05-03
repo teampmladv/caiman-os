@@ -220,48 +220,85 @@ ok "GRUB EFI image built"
 # ── Pack ISO ──────────────────────────────────────────────────────────────
 step "Creating ISO"
 
-# Build BIOS boot image with GRUB
-$GRUB_MKSTANDALONE \
-    --format=i386-pc \
-    --output="$ISO_ROOT/boot/grub/bios.img" \
-    --modules="biosdisk part_gpt part_msdos fat iso9660" \
-    "boot/grub/grub.cfg=$ISO_ROOT/boot/grub/grub.cfg" || true
+# ── Copy syslinux from Alpine for BIOS boot ────────────────────────────
+ALPINE_ISO_CACHED="/tmp/alpine-virt.iso"
+SYSLINUX_SRC="/tmp/alpine-syslinux"
+mkdir -p "$SYSLINUX_SRC"
 
-# Create hybrid CD boot catalog for BIOS
-if [[ -f "$ISO_ROOT/boot/grub/bios.img" ]]; then
-    # Split bios.img into cdboot.img (512B) + core.img (rest)
-    dd if="$ISO_ROOT/boot/grub/bios.img" bs=512 count=1        of="$ISO_ROOT/boot/grub/cdboot.img" 2>/dev/null
-    dd if="$ISO_ROOT/boot/grub/bios.img" bs=512 skip=1        of="$ISO_ROOT/boot/grub/core.img" 2>/dev/null
+if [[ -f "$ALPINE_ISO_CACHED" ]]; then
+    ALPINE_MNT="/tmp/alpine-mnt-$$"
+    mkdir -p "$ALPINE_MNT"
+    mount -o loop "$ALPINE_ISO_CACHED" "$ALPINE_MNT" 2>/dev/null || true
+    if [[ -d "$ALPINE_MNT/boot/syslinux" ]]; then
+        cp "$ALPINE_MNT"/boot/syslinux/*.bin            "$ALPINE_MNT"/boot/syslinux/*.c32            "$SYSLINUX_SRC/" 2>/dev/null || true
+    fi
+    umount "$ALPINE_MNT" 2>/dev/null || true
+    rmdir "$ALPINE_MNT"
 fi
 
-xorriso -as mkisofs \
-    -iso-level 3 \
-    -full-iso9660-filenames \
-    -volid "CAIMAN-OS-${VERSION}" \
-    -b boot/grub/cdboot.img \
-    -no-emul-boot \
-    -boot-load-size 4 \
-    -boot-info-table \
-    --grub2-boot-info \
-    --grub2-mbr "$ISO_ROOT/boot/grub/core.img" \
-    -eltorito-alt-boot \
-    -e boot/grub/efiboot.img \
-    -no-emul-boot \
-    -isohybrid-gpt-basdat \
-    -append_partition 2 0xef "$ISO_ROOT/boot/grub/efiboot.img" \
-    -output "$ISO_NAME" \
-    "$ISO_ROOT" 2>/dev/null || \
-xorriso -as mkisofs \
-    -iso-level 3 \
-    -full-iso9660-filenames \
-    -volid "CAIMAN-OS-${VERSION}" \
-    -eltorito-alt-boot \
-    -e boot/grub/efiboot.img \
-    -no-emul-boot \
-    -isohybrid-gpt-basdat \
-    -append_partition 2 0xef "$ISO_ROOT/boot/grub/efiboot.img" \
-    -output "$ISO_NAME" \
-    "$ISO_ROOT"
+# Create syslinux config for BIOS boot
+mkdir -p "$ISO_ROOT/boot/syslinux"
+if [[ -d "$SYSLINUX_SRC" ]] && ls "$SYSLINUX_SRC"/*.bin &>/dev/null; then
+    cp "$SYSLINUX_SRC"/*.bin "$SYSLINUX_SRC"/*.c32        "$ISO_ROOT/boot/syslinux/" 2>/dev/null || true
+    ISOHDPFX="$ISO_ROOT/boot/syslinux/isohdpfx.bin"
+    ISOLINUX="boot/syslinux/isolinux.bin"
+else
+    # Fallback: use system syslinux if available
+    SYSLINUX_DATA=$(find /usr -name "isolinux.bin" 2>/dev/null | head -1)
+    if [[ -n "$SYSLINUX_DATA" ]]; then
+        cp "$(dirname $SYSLINUX_DATA)"/*.bin            "$(dirname $SYSLINUX_DATA)"/*.c32            "$ISO_ROOT/boot/syslinux/" 2>/dev/null || true
+    fi
+    ISOHDPFX="$ISO_ROOT/boot/syslinux/isohdpfx.bin"
+    ISOLINUX="boot/syslinux/isolinux.bin"
+fi
+
+cat > "$ISO_ROOT/boot/syslinux/isolinux.cfg" << SYSEOF
+DEFAULT caiman
+LABEL caiman
+  MENU LABEL ^Install Caiman OS
+  LINUX /boot/vmlinuz
+  APPEND quiet console=ttyS0,115200 caiman.mode=install
+  INITRD /boot/initramfs.img
+LABEL live
+  MENU LABEL ^Live (no install)
+  LINUX /boot/vmlinuz
+  APPEND quiet console=ttyS0,115200 caiman.mode=live
+  INITRD /boot/initramfs.img
+SEOF
+
+# ── Build hybrid BIOS+UEFI ISO ─────────────────────────────────────────
+if [[ -f "$ISOHDPFX" ]]; then
+    xorriso -as mkisofs \
+        -iso-level 3 \
+        -full-iso9660-filenames \
+        -volid "CAIMAN${VERSION//./}" \
+        -isohybrid-mbr "$ISOHDPFX" \
+        -b boot/syslinux/isolinux.bin \
+        -c boot/syslinux/boot.cat \
+        -no-emul-boot \
+        -boot-load-size 4 \
+        -boot-info-table \
+        -eltorito-alt-boot \
+        -e boot/grub/efiboot.img \
+        -no-emul-boot \
+        -isohybrid-gpt-basdat \
+        -append_partition 2 0xef "$ISO_ROOT/boot/grub/efiboot.img" \
+        -output "$ISO_NAME" \
+        "$ISO_ROOT"
+else
+    # EFI only fallback
+    xorriso -as mkisofs \
+        -iso-level 3 \
+        -full-iso9660-filenames \
+        -volid "CAIMAN${VERSION//./}" \
+        -eltorito-alt-boot \
+        -e boot/grub/efiboot.img \
+        -no-emul-boot \
+        -isohybrid-gpt-basdat \
+        -append_partition 2 0xef "$ISO_ROOT/boot/grub/efiboot.img" \
+        -output "$ISO_NAME" \
+        "$ISO_ROOT"
+fi
 
 ISO_SIZE=$(du -sh "$ISO_NAME" | cut -f1)
 ISO_SHA=$(sha256sum "$ISO_NAME" | cut -d' ' -f1)
