@@ -1,4 +1,4 @@
-//! vmm/src/netlink_ctrl.rs — communicate with caiman_net.ko
+//! vmm/src/netlink_ctrl.rs -- communicate with caiman_net.ko
 //! Uses tokio::process to delegate to caiman-netctl CLI (no genetlink dep).
 
 use anyhow::{Context, Result};
@@ -13,7 +13,7 @@ pub async fn vm_add(vm_id: u32, mac: &[u8; 6], uplink: &str) -> Result<()> {
             .args(["vm-add", "--vm-id", &vm_id.to_string(), "--mac", &mac_str, "--uplink", uplink])
             .status().await.context("caiman-netctl vm-add")?;
     } else {
-        tracing::warn!("caiman_net.ko not available — vm {vm_id} without XDP");
+        tracing::warn!("caiman_net.ko not available -- vm {vm_id} without XDP");
     }
     Ok(())
 }

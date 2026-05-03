@@ -1,7 +1,7 @@
-//! vmm/src/kvm/loader.rs — Linux x86 boot protocol (bzImage)
+//! vmm/src/kvm/loader.rs -- Linux x86 boot protocol (bzImage)
 //!
 //! Implementa el protocolo de arranque de Linux para x86/x86_64.
-//! Documentación oficial: Documentation/x86/boot.rst en el kernel de Linux.
+//! Documentacion oficial: Documentation/x86/boot.rst en el kernel de Linux.
 //!
 //! Flujo de arranque:
 //!
@@ -15,12 +15,12 @@
 //!
 //! Mapa de memoria resultante en el guest:
 //!
-//!   0x0000_0000  →  0x0000_7FFF   Real mode IVT, BDA
-//!   0x0000_7C00  →  0x0000_7DFF   Boot sector (no usado en protegido)
-//!   0x0000_8000  →  0x0000_FFFF   zero page (boot_params struct)
-//!   0x0001_0000  →  0x0009_FFFF   Command line (en 0x20000)
-//!   0x0010_0000  →  0x????_????   Kernel (1 MiB = base de carga estándar)
-//!   0x????_????  →  0x????_????   Initrd (si hay)
+//!   0x0000_0000  ->  0x0000_7FFF   Real mode IVT, BDA
+//!   0x0000_7C00  ->  0x0000_7DFF   Boot sector (no usado en protegido)
+//!   0x0000_8000  ->  0x0000_FFFF   zero page (boot_params struct)
+//!   0x0001_0000  ->  0x0009_FFFF   Command line (en 0x20000)
+//!   0x0010_0000  ->  0x????_????   Kernel (1 MiB = base de carga estandar)
+//!   0x????_????  ->  0x????_????   Initrd (si hay)
 
 use std::path::Path;
 use std::fs;
@@ -29,7 +29,7 @@ use tracing::{debug, info};
 
 use super::memory::GuestMemory;
 
-// ── Constantes del boot protocol ──────────────────────────────────────────
+// -- Constantes del boot protocol ------------------------------------------
 
 /// Magic number en el boot sector (offset 0x1FE)
 const BOOT_MAGIC: u16 = 0xAA55;
@@ -37,64 +37,64 @@ const BOOT_MAGIC: u16 = 0xAA55;
 /// Magic "HdrS" en el setup header (offset 0x202)
 const HDR_MAGIC: u32 = 0x53726448;
 
-/// Dirección base de carga del kernel (1 MiB)
+/// Direccion base de carga del kernel (1 MiB)
 pub const KERNEL_LOAD_ADDR: u64 = 0x0010_0000;
 
-/// Dirección de la zero page (boot_params)
+/// Direccion de la zero page (boot_params)
 pub const ZERO_PAGE_ADDR: u64 = 0x0000_7000;
 
-/// Dirección de la command line
+/// Direccion de la command line
 pub const CMDLINE_ADDR: u64 = 0x0002_0000;
 
-/// Tamaño máximo de la command line
+/// Tama?o maximo de la command line
 const CMDLINE_MAX: usize = 4096;
 
-/// Dirección del initrd (al final del primer GiB)
+/// Direccion del initrd (al final del primer GiB)
 const INITRD_ADDR: u64 = 0x3000_0000;
 
-// ── Estructuras del boot header ───────────────────────────────────────────
+// -- Estructuras del boot header -------------------------------------------
 
 /// Boot header del kernel de Linux (offset 0x1F1 en la imagen)
 /// Ver: Documentation/x86/boot.rst, tabla "The Real-Mode Kernel Header"
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
 pub struct BootHeader {
-    pub setup_sects:       u8,    // 0x1F1 número de sectores del setup
+    pub setup_sects:       u8,    // 0x1F1 numero de sectores del setup
     pub root_flags:        u16,   // 0x1F2
-    pub syssize:           u32,   // 0x1F4 tamaño del kernel en párrafos de 16 bytes
+    pub syssize:           u32,   // 0x1F4 tama?o del kernel en parrafos de 16 bytes
     pub ram_size:          u16,   // 0x1F8
     pub vid_mode:          u16,   // 0x1FA
     pub root_dev:          u16,   // 0x1FC
-    pub boot_flag:         u16,   // 0x1FE → debe ser 0xAA55
+    pub boot_flag:         u16,   // 0x1FE -> debe ser 0xAA55
     pub jump:              u16,   // 0x200 jump instruction
-    pub header:            u32,   // 0x202 → debe ser "HdrS" = 0x53726448
+    pub header:            u32,   // 0x202 -> debe ser "HdrS" = 0x53726448
     pub version:           u16,   // 0x206 boot protocol version
     pub realmode_swtch:    u32,   // 0x208
     pub start_sys_seg:     u16,   // 0x20C
     pub kernel_version:    u16,   // 0x20E
-    pub type_of_loader:    u8,    // 0x210 → 0xFF = undefined bootloader
+    pub type_of_loader:    u8,    // 0x210 -> 0xFF = undefined bootloader
     pub loadflags:         u8,    // 0x211 flags de carga
     pub setup_move_size:   u16,   // 0x212
     pub code32_start:      u32,   // 0x214 entry point modo protegido
-    pub ramdisk_image:     u32,   // 0x218 dirección initrd
-    pub ramdisk_size:      u32,   // 0x21C tamaño initrd
+    pub ramdisk_image:     u32,   // 0x218 direccion initrd
+    pub ramdisk_size:      u32,   // 0x21C tama?o initrd
     pub bootsect_kludge:   u32,   // 0x220
     pub heap_end_ptr:      u16,   // 0x224
     pub ext_loader_ver:    u8,    // 0x226
     pub ext_loader_type:   u8,    // 0x227
     pub cmd_line_ptr:      u32,   // 0x228 puntero a command line
-    pub initrd_addr_max:   u32,   // 0x22C dirección máxima initrd
+    pub initrd_addr_max:   u32,   // 0x22C direccion maxima initrd
     pub kernel_alignment:  u32,   // 0x230
     pub relocatable_kernel:u8,    // 0x234
     pub min_alignment:     u8,    // 0x235
     pub xloadflags:        u16,   // 0x236
-    pub cmdline_size:      u32,   // 0x238 tamaño máximo de cmdline
+    pub cmdline_size:      u32,   // 0x238 tama?o maximo de cmdline
     pub hardware_subarch:  u32,   // 0x23C
     pub hardware_subarch_data: u64, // 0x240
     pub payload_offset:    u32,   // 0x248
     pub payload_length:    u32,   // 0x24C
     pub setup_data:        u64,   // 0x250
-    pub pref_address:      u64,   // 0x258 dirección preferida de carga
+    pub pref_address:      u64,   // 0x258 direccion preferida de carga
     pub init_size:         u32,   // 0x260 espacio necesario en memoria
     pub handover_offset:   u32,   // 0x264 EFI handover offset
 }
@@ -116,7 +116,7 @@ struct E820Entry {
     entry_type: u32,
 }
 
-// ── Loader ────────────────────────────────────────────────────────────────
+// -- Loader ----------------------------------------------------------------
 
 pub struct KernelLoader {
     pub entry_point:   u64,
@@ -126,7 +126,7 @@ pub struct KernelLoader {
 }
 
 /// Carga un bzImage en la memoria del guest y configura la zero page.
-/// Devuelve la dirección del entry point para los registros del vCPU.
+/// Devuelve la direccion del entry point para los registros del vCPU.
 pub fn load_bzimage(
     mem:        &GuestMemory,
     kernel_path:&Path,
@@ -139,7 +139,7 @@ pub fn load_bzimage(
     let kernel_bytes = fs::read(kernel_path)
         .with_context(|| format!("reading kernel: {}", kernel_path.display()))?;
 
-    // ── 1. Parsear boot header ────────────────────────────────────────────
+    // -- 1. Parsear boot header --------------------------------------------
     let header = parse_boot_header(&kernel_bytes)?;
 
     // Verificar magic numbers
@@ -152,7 +152,7 @@ pub fn load_bzimage(
 
     let proto_ver = { header.version };
     if proto_ver < 0x0202 {
-        bail!("Boot protocol {:#x} too old — need >= 2.02", proto_ver);
+        bail!("Boot protocol {:#x} too old -- need >= 2.02", proto_ver);
     }
 
     debug!("Boot protocol: {:#x}", proto_ver);  // proto_ver is a copy, safe
@@ -163,7 +163,7 @@ pub fn load_bzimage(
         bail!("Only bzImage (LOADED_HIGH) is supported");
     }
 
-    // ── 2. Extraer el kernel de la imagen ─────────────────────────────────
+    // -- 2. Extraer el kernel de la imagen ---------------------------------
     // El bzImage tiene: setup sectors + kernel comprimido
     let setup_sects = if header.setup_sects == 0 { 4 } else { header.setup_sects as usize };
     let kernel_offset = (setup_sects + 1) * 512;
@@ -175,7 +175,7 @@ pub fn load_bzimage(
     let kernel_data = &kernel_bytes[kernel_offset..];
     let kernel_size = kernel_data.len() as u64;
 
-    // ── 3. Copiar kernel a 1 MiB en la memoria del guest ─────────────────
+    // -- 3. Copiar kernel a 1 MiB en la memoria del guest -----------------
     let relocatable = header.relocatable_kernel;
     let pref_addr    = header.pref_address;
     let load_addr = if relocatable != 0 {
@@ -192,13 +192,13 @@ pub fn load_bzimage(
 
     let kernel_end = load_addr + kernel_size;
 
-    // ── 4. Cargar initrd si existe ────────────────────────────────────────
+    // -- 4. Cargar initrd si existe ----------------------------------------
     let (initrd_start, initrd_size) = if let Some(path) = initrd_path {
         let initrd_data = fs::read(path)
             .with_context(|| format!("reading initrd: {}", path.display()))?;
         let size = initrd_data.len() as u64;
 
-        // Poner el initrd debajo del límite initrd_addr_max, alineado a 4K
+        // Poner el initrd debajo del l?mite initrd_addr_max, alineado a 4K
         let initrd_addr_max = header.initrd_addr_max;
         let max_addr = if initrd_addr_max > 0 {
             initrd_addr_max as u64
@@ -216,7 +216,7 @@ pub fn load_bzimage(
         (None, 0)
     };
 
-    // ── 5. Copiar command line ────────────────────────────────────────────
+    // -- 5. Copiar command line --------------------------------------------
     if cmdline.len() > CMDLINE_MAX {
         bail!("Command line too long ({} > {})", cmdline.len(), CMDLINE_MAX);
     }
@@ -228,7 +228,7 @@ pub fn load_bzimage(
 
     debug!("Command line at {:#x}: {}", CMDLINE_ADDR, cmdline);
 
-    // ── 6. Configurar la zero page (boot_params) ──────────────────────────
+    // -- 6. Configurar la zero page (boot_params) --------------------------
     let boot_params = build_boot_params(
         &header,
         mem_mib,
@@ -246,7 +246,7 @@ pub fn load_bzimage(
     mem.write_slice(params_bytes, ZERO_PAGE_ADDR)
         .context("writing boot_params to guest memory")?;
 
-    // ── 7. Configurar GDT (descriptor tables mínimas) ────────────────────
+    // -- 7. Configurar GDT (descriptor tables m?nimas) --------------------
     setup_gdt(mem)?;
 
     info!("Kernel loaded: entry={:#x}, kernel_end={:#x}", load_addr, kernel_end);
@@ -259,19 +259,19 @@ pub fn load_bzimage(
     })
 }
 
-// ── boot_params (zero page) ───────────────────────────────────────────────
+// -- boot_params (zero page) -----------------------------------------------
 
 /// Subset del boot_params struct que necesitamos llenar
-/// (0x1000 bytes total — definido en arch/x86/include/uapi/asm/bootparam.h)
+/// (0x1000 bytes total -- definido en arch/x86/include/uapi/asm/bootparam.h)
 #[repr(C, packed)]
 struct BootParams {
-    _pad0:          [u8; 0x1E8],    // 0x000 – 0x1E7: screen_info, etc. (ceros)
+    _pad0:          [u8; 0x1E8],    // 0x000 - 0x1E7: screen_info, etc. (ceros)
     e820_entries:   u8,             // 0x1E8
-    _pad1:          [u8; 8],        // 0x1E9 – 0x1F0
+    _pad1:          [u8; 8],        // 0x1E9 - 0x1F0
     // Offset 0x1F1: setup header (copiamos del bzImage)
-    hdr:            BootHeader,     // 0x1F1 – ~0x268
+    hdr:            BootHeader,     // 0x1F1 - ~0x268
     _pad2:          [u8; 0],  // padding handled by packed repr
-    // 0x290: E820 memory map (máximo 128 entradas × 20 bytes)
+    // 0x290: E820 memory map (maximo 128 entradas ? 20 bytes)
     e820_table:     [E820Entry; 128],
 }
 
@@ -303,7 +303,7 @@ fn build_boot_params(
     }
 
     // E820 memory map
-    // Entrada 1: [0, 640 KiB] — RAM convencional
+    // Entrada 1: [0, 640 KiB] -- RAM convencional
     let mut n = 0usize;
     params.e820_table[n] = E820Entry {
         addr:       0x0000_0000,
@@ -312,7 +312,7 @@ fn build_boot_params(
     };
     n += 1;
 
-    // Entrada 2: [640 KiB – 1 MiB] — reservado (VGA, ROM)
+    // Entrada 2: [640 KiB - 1 MiB] -- reservado (VGA, ROM)
     params.e820_table[n] = E820Entry {
         addr:       0x000A_0000,
         size:       0x0006_0000,  // 384 KiB
@@ -320,7 +320,7 @@ fn build_boot_params(
     };
     n += 1;
 
-    // Entrada 3: [1 MiB – RAM total] — RAM del guest
+    // Entrada 3: [1 MiB - RAM total] -- RAM del guest
     let mem_bytes = mem_mib * 1024 * 1024;
     params.e820_table[n] = E820Entry {
         addr:       0x0010_0000,
@@ -333,17 +333,17 @@ fn build_boot_params(
     params
 }
 
-// ── GDT mínima para modo protegido ────────────────────────────────────────
+// -- GDT m?nima para modo protegido ----------------------------------------
 
 const GDT_ADDR: u64 = 0x0000_5000;
 
 fn setup_gdt(mem: &GuestMemory) -> Result<()> {
-    // Descriptores GDT: null, código 32-bit, datos 32-bit, código 64-bit
+    // Descriptores GDT: null, codigo 32-bit, datos 32-bit, codigo 64-bit
     let gdt: [u64; 4] = [
         0x0000_0000_0000_0000,  // null descriptor
-        0x00CF_9A00_0000_FFFF,  // código 32-bit: base=0, limit=4G, DPL=0, execute/read
+        0x00CF_9A00_0000_FFFF,  // codigo 32-bit: base=0, limit=4G, DPL=0, execute/read
         0x00CF_9200_0000_FFFF,  // datos 32-bit: base=0, limit=4G, DPL=0, read/write
-        0x00AF_9A00_0000_FFFF,  // código 64-bit: L=1 (long mode)
+        0x00AF_9A00_0000_FFFF,  // codigo 64-bit: L=1 (long mode)
     ];
 
     let gdt_bytes = unsafe {
@@ -360,7 +360,7 @@ fn setup_gdt(mem: &GuestMemory) -> Result<()> {
     Ok(())
 }
 
-// ── Parse del boot header ─────────────────────────────────────────────────
+// -- Parse del boot header -------------------------------------------------
 
 fn parse_boot_header(data: &[u8]) -> Result<BootHeader> {
     const HDR_OFFSET: usize = 0x1F1;
@@ -378,7 +378,7 @@ fn parse_boot_header(data: &[u8]) -> Result<BootHeader> {
     Ok(hdr)
 }
 
-// ── Configurar registros del vCPU para arrancar el kernel ─────────────────
+// -- Configurar registros del vCPU para arrancar el kernel -----------------
 
 /// Registros que el vCPU debe tener al entrar al kernel.
 /// Ver: Documentation/x86/boot.rst, "Running the kernel"
@@ -408,12 +408,12 @@ pub fn boot_regs(entry: u64) -> BootRegs {
         rip:    entry,
         rsp:    0x0008_0000,     // stack en 512 KiB
         rbp:    0,
-        rsi:    ZERO_PAGE_ADDR,  // RSI → boot_params (requerido por el kernel)
+        rsi:    ZERO_PAGE_ADDR,  // RSI -> boot_params (requerido por el kernel)
         rflags: 0x0000_0002,     // Reserved bit siempre 1
 
-        // Modo protegido de 32-bit (el kernel hace la transición a 64-bit)
-        cs_selector: 0x10,   // índice 2 en GDT (código 32-bit)
-        ds_selector: 0x18,   // índice 3 en GDT (datos 32-bit)
+        // Modo protegido de 32-bit (el kernel hace la transicion a 64-bit)
+        cs_selector: 0x10,   // ?ndice 2 en GDT (codigo 32-bit)
+        ds_selector: 0x18,   // ?ndice 3 en GDT (datos 32-bit)
         es_selector: 0x18,
         ss_selector: 0x18,
         fs_selector: 0x18,
@@ -426,11 +426,11 @@ pub fn boot_regs(entry: u64) -> BootRegs {
         efer: 0,
 
         gdt_base:  GDT_ADDR,
-        gdt_limit: 4 * 8 - 1,   // 4 descriptores × 8 bytes - 1
+        gdt_limit: 4 * 8 - 1,   // 4 descriptores ? 8 bytes - 1
     }
 }
 
-// ── Compatibility type alias used by vcpu.rs ──────────────────────────────
+// -- Compatibility type alias used by vcpu.rs ------------------------------
 
 pub struct KernelLoadResult {
     pub kernel_load:     KernelLoadOffset,

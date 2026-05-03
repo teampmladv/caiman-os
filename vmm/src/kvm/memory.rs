@@ -1,13 +1,13 @@
-//! vmm/src/kvm/memory.rs — Guest memory management
+//! vmm/src/kvm/memory.rs -- Guest memory management
 //!
 //! Gestiona la memoria del guest via KVM_SET_USER_MEMORY_REGION.
-//! Usa mmap anónimo para alocar la RAM del guest — KVM mapea ese
+//! Usa mmap anonimo para alocar la RAM del guest -- KVM mapea ese
 //! rango de memoria del proceso host como RAM visible por el guest.
 //!
 //! Layout:
-//!   0x0000_0000 – 0x0009_FFFF  640 KiB RAM convencional
-//!   0x000A_0000 – 0x000F_FFFF  384 KiB reservado (VGA/ROM)
-//!   0x0010_0000 – <mem_end>    RAM extendida (kernel, initrd, heap)
+//!   0x0000_0000 - 0x0009_FFFF  640 KiB RAM convencional
+//!   0x000A_0000 - 0x000F_FFFF  384 KiB reservado (VGA/ROM)
+//!   0x0010_0000 - <mem_end>    RAM extendida (kernel, initrd, heap)
 
 use std::num::NonZeroUsize;
 use anyhow::{Context, Result};
@@ -15,7 +15,7 @@ use kvm_ioctls::VmFd;
 use kvm_bindings::{kvm_userspace_memory_region, KVM_MEM_LOG_DIRTY_PAGES};
 use tracing::debug;
 
-/// Región de memoria del guest
+/// Region de memoria del guest
 pub struct MemoryRegion {
     pub host_ptr: *mut u8,
     pub guest_addr: u64,
@@ -34,7 +34,7 @@ impl Drop for MemoryRegion {
     }
 }
 
-/// Gestión completa de la memoria del guest
+/// Gestion completa de la memoria del guest
 pub struct GuestMemory {
     regions: Vec<MemoryRegion>,
 }
@@ -44,14 +44,14 @@ impl GuestMemory {
     pub fn new(vm: &VmFd, mem_mib: u64, track_dirty: bool) -> Result<Self> {
         let mut regions = Vec::new();
 
-        // Región 1: RAM convencional [0 – 640 KiB)
+        // Region 1: RAM convencional [0 - 640 KiB)
         let low_size = 640 * 1024usize;
         let low = alloc_region(vm, 0, 0x0000_0000, low_size, 0, track_dirty)
             .context("allocating low RAM")?;
         regions.push(low);
 
-        // Región 2: RAM extendida [1 MiB – mem_end)
-        // (el rango 640K–1M está reservado para VGA/ROM y no lo mapeamos)
+        // Region 2: RAM extendida [1 MiB - mem_end)
+        // (el rango 640K-1M esta reservado para VGA/ROM y no lo mapeamos)
         let high_size = (mem_mib * 1024 * 1024 - 0x0010_0000) as usize;
         let high = alloc_region(vm, 1, 0x0010_0000, high_size, 1, track_dirty)
             .context("allocating high RAM")?;
@@ -61,7 +61,7 @@ impl GuestMemory {
         Ok(Self { regions })
     }
 
-    /// Escribir un slice de bytes en una dirección guest.
+    /// Escribir un slice de bytes en una direccion guest.
     pub fn write_slice(&self, data: &[u8], guest_addr: u64) -> Result<()> {
         let region = self.region_for(guest_addr, data.len())?;
         let offset  = (guest_addr - region.guest_addr) as usize;
@@ -75,7 +75,7 @@ impl GuestMemory {
         Ok(())
     }
 
-    /// Leer un slice de bytes desde una dirección guest.
+    /// Leer un slice de bytes desde una direccion guest.
     pub fn read_slice(&self, guest_addr: u64, len: usize) -> Result<Vec<u8>> {
         let region = self.region_for(guest_addr, len)?;
         let offset  = (guest_addr - region.guest_addr) as usize;
@@ -90,7 +90,7 @@ impl GuestMemory {
         Ok(buf)
     }
 
-    /// Obtener el puntero host para una dirección guest.
+    /// Obtener el puntero host para una direccion guest.
     pub fn host_ptr(&self, guest_addr: u64) -> Result<*const u8> {
         let region = self.region_for(guest_addr, 1)?;
         let offset  = (guest_addr - region.guest_addr) as usize;
@@ -108,7 +108,7 @@ impl GuestMemory {
         ))
     }
 
-    /// Register all regions with the VM (no-op — already done at construction).
+    /// Register all regions with the VM (no-op -- already done at construction).
     pub fn register_with_vm(&self, _vm: &kvm_ioctls::VmFd) -> anyhow::Result<()> {
         Ok(())
     }
@@ -136,7 +136,7 @@ fn alloc_region(
     numa_node:   u32,
     track_dirty: bool,
 ) -> Result<MemoryRegion> {
-    // Alocar memoria anónima con mmap
+    // Alocar memoria anonima con mmap
     let host_ptr = unsafe {
         libc::mmap(
             std::ptr::null_mut(),

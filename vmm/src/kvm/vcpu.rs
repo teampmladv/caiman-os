@@ -1,4 +1,4 @@
-//! vmm/src/kvm/vcpu.rs — vCPU thread with serial console (ttyS0)
+//! vmm/src/kvm/vcpu.rs -- vCPU thread with serial console (ttyS0)
 //!
 //! v0.3.0: wires up the 16550A serial to KVM_EXIT_IO.
 //! The kernel writes ttyS0 output via outb to port 0x3F8.
@@ -24,7 +24,7 @@ use crate::virtio::net::{NetState, VIRTIO_NET_MMIO_BASE, VIRTIO_NET_MMIO_SIZE};
 use crate::virtio::blk::{BlkState, VIRTIO_BLK_MMIO_BASE, VIRTIO_BLK_MMIO_SIZE};
 use super::{loader::KernelLoadResult, memory::GuestMemory, vm::Vm};
 
-// ── KVM_RUN mmap wrapper ──────────────────────────────────────────────────
+// -- KVM_RUN mmap wrapper --------------------------------------------------
 
 /// Safe wrapper around the kvm_run memory-mapped structure.
 /// kvm-ioctls mmaps kvm_run internally but doesn't expose it publicly.
@@ -88,7 +88,7 @@ impl Drop for KvmRunPtr {
 // Safety: KvmRunPtr is accessed only by the owning vCPU thread
 unsafe impl Send for KvmRunPtr {}
 
-// ── vCPU ──────────────────────────────────────────────────────────────────
+// -- vCPU ------------------------------------------------------------------
 
 pub struct Vcpu {
     id:  u64,
@@ -129,7 +129,7 @@ impl Vcpu {
     }
 }
 
-// ── Run loop ──────────────────────────────────────────────────────────────
+// -- Run loop --------------------------------------------------------------
 
 fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>>, vnet: Arc<Mutex<NetState>>, vblk: Option<Arc<Mutex<BlkState>>>) {
     info!("vCPU {id} entering run loop");
@@ -142,7 +142,7 @@ fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>
                     MmioRead(addr, data)  => handle_mmio_read(id, addr, data, &vnet, &vblk),
                     MmioWrite(addr, data) => handle_mmio_write(id, addr, data, &serial, &vnet, &vblk),
                     Hlt => {
-                        debug!("vCPU {id}: HLT — idling");
+                        debug!("vCPU {id}: HLT -- idling");
                         std::thread::sleep(std::time::Duration::from_micros(100));
                     }
                     Shutdown => {
@@ -170,11 +170,11 @@ fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>
     info!("vCPU {id} exited run loop");
 }
 
-// ── Exit handlers ─────────────────────────────────────────────────────────
+// -- Exit handlers ---------------------------------------------------------
 
 const KVM_IO_OUT: u8 = 1;
 
-/// Handle KVM_EXIT_IO — route to serial or reboot port
+/// Handle KVM_EXIT_IO -- route to serial or reboot port
 fn handle_io(id: u64, run: &KvmRunPtr, serial: &Arc<Mutex<Serial>>) {
     let port      = run.io_port();
     let direction = run.io_direction();
@@ -193,7 +193,7 @@ fn handle_io(id: u64, run: &KvmRunPtr, serial: &Arc<Mutex<Serial>>) {
 
     // ACPI reboot port 0x604
     if port == 0x604 && direction == KVM_IO_OUT {
-        info!("vCPU {id}: ACPI reset — shutting down");
+        info!("vCPU {id}: ACPI reset -- shutting down");
         std::process::exit(0);
     }
 
@@ -250,7 +250,7 @@ fn handle_mmio_write(id: u64, addr: u64, data: &[u8], serial: &Arc<Mutex<Serial>
     debug!("vCPU {id}: MMIO write {addr:#x} len={} val={val32:#x}", data.len());
 }
 
-// ── vCPU configuration ────────────────────────────────────────────────────
+// -- vCPU configuration ----------------------------------------------------
 
 fn configure_cpuid(vm: &Vm, fd: &VcpuFd) -> Result<()> {
     let mut cpuid = vm.kvm()
@@ -285,7 +285,7 @@ fn configure_regs(fd: &VcpuFd, kernel: &KernelLoadResult) -> Result<()> {
     let mut regs = kvm_regs::default();
     regs.rflags = 0x0000_0000_0000_0002; // reserved bit always set
     regs.rip    = kernel.kernel_load.offset;
-    regs.rsi    = kernel.boot_params_addr; // → boot_params
+    regs.rsi    = kernel.boot_params_addr; // -> boot_params
     fd.set_regs(&regs)?;
     Ok(())
 }
