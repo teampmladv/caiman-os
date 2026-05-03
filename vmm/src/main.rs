@@ -49,13 +49,14 @@ async fn main() -> Result<()> {
 }
 
 async fn run(args: Args) -> Result<()> {
-    // -- 1. Guest memory ---------------------------------------------------
-    let kvm_fd = Kvm::new().context("opening /dev/kvm")?;
-    let vm_fd  = kvm_fd.create_vm().context("KVM_CREATE_VM")?;
-    let mem    = kvm::memory::GuestMemory::new(&vm_fd, args.mem_mib, false)?;
-    let mem    = Arc::new(mem);
+    // -- 1. Guest memory (pre-allocate, register in Vm::new) ---------------
+    let mem = kvm::memory::GuestMemory::alloc(args.mem_mib, false)?;
+    let mem = Arc::new(mem);
 
-    // -- 2. Load kernel ----------------------------------------------------
+    // -- 2. VM (creates KVM fd + VM fd + registers memory) -----------------
+    let vm = kvm::vm::Vm::new(&*mem)?;
+
+    // -- 3. Load kernel ----------------------------------------------------
     let lr = kvm::loader::load_bzimage(
         &*mem,
         std::path::Path::new(&args.kernel),
@@ -64,9 +65,6 @@ async fn run(args: Args) -> Result<()> {
         args.mem_mib,
     )?;
     info!("Kernel entry={:#x}", lr.entry_point);
-
-    // -- 3. VM -------------------------------------------------------------
-    let vm = kvm::vm::Vm::new(&*mem)?;
 
     // -- 4. virtio-net -----------------------------------------------------
     // Parse vm_id to u32 for MAC/netlink -- strip "vm-" prefix, take decimal or hash
