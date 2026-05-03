@@ -19,7 +19,7 @@ use virtio::net::{VirtioNet, VIRTIO_NET_MMIO_BASE};
 use virtio::blk::{VirtioBlk, VIRTIO_BLK_MMIO_BASE};
 
 #[derive(Parser)]
-#[command(name = "caiman-vmm", version = "0.6.0", about = "KVM VMM -- no QEMU")]
+#[command(name = "caiman-vmm", version = env!("CARGO_PKG_VERSION"), about = "KVM VMM -- no QEMU")]
 struct Args {
     #[arg(long)] kernel:  String,
     #[arg(long)] initrd:  Option<String>,
