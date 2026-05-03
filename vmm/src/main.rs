@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     let args = Args::parse();
-    info!("caiman-vmm v{} --", env!("CARGO_PKG_VERSION"), vm_id={} mem={}MiB cpus={}", args.vm_id, args.mem_mib, args.cpus);
+    info!("caiman-vmm v{} -- vm_id={} mem={}MiB cpus={}", env!("CARGO_PKG_VERSION"), args.vm_id, args.mem_mib, args.cpus);
     run(args).await
 }
 
