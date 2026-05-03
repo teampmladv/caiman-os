@@ -51,7 +51,6 @@ impl KvmRunPtr {
         unsafe { *((self.ptr as *const u8).add(offset)) }
     }
 }
-
 impl Drop for KvmRunPtr {
     fn drop(&mut self) { unsafe { libc::munmap(self.ptr as *mut libc::c_void, self.size); } }
 }
@@ -105,10 +104,9 @@ fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>
 const KVM_IO_OUT: u8 = 1;
 
 fn handle_io(id: u64, run: &KvmRunPtr, serial: &Arc<Mutex<Serial>>) {
-    let port      = run.io_port();
+    let port = run.io_port();
     let direction = run.io_direction();
-    let size      = run.io_size();
-
+    let size = run.io_size();
     if port >= SERIAL_BASE && port < SERIAL_BASE + 8 {
         if direction == KVM_IO_OUT {
             let byte = run.io_data_u8();
@@ -124,12 +122,10 @@ fn handle_io(id: u64, run: &KvmRunPtr, serial: &Arc<Mutex<Serial>>) {
         }
         return;
     }
-
     if port == 0x604 && direction == KVM_IO_OUT {
         info!("vCPU {id}: ACPI reset");
         std::process::exit(0);
     }
-
     debug!("vCPU {id}: unhandled IO port={port:#x} dir={direction} size={size}");
 }
 
@@ -211,33 +207,27 @@ fn configure_regs(fd: &VcpuFd, kernel: &KernelLoadResult) -> Result<()> {
 
 fn configure_sregs(fd: &VcpuFd, _mem: &GuestMemory) -> Result<()> {
     let mut sregs = fd.get_sregs()?;
-
-    // CS: GDT[1] selector=0x08, 32-bit code
     let code_seg = kvm_bindings::kvm_segment {
         base: 0, limit: 0xffff_ffff, selector: 0x08,
         type_: 0xb, present: 1, dpl: 0, db: 1, s: 1, l: 0, g: 1, avl: 0,
         ..Default::default()
     };
-    // DS/ES/FS/GS/SS: GDT[2] selector=0x10, 32-bit data
     let data_seg = kvm_bindings::kvm_segment {
         base: 0, limit: 0xffff_ffff, selector: 0x10,
         type_: 0x3, present: 1, dpl: 0, db: 1, s: 1, l: 0, g: 1, avl: 0,
         ..Default::default()
     };
-
     sregs.cs = code_seg;
     sregs.ds = data_seg;
     sregs.es = data_seg;
     sregs.fs = data_seg;
     sregs.gs = data_seg;
     sregs.ss = data_seg;
-
     sregs.gdt.base  = 0x5000;
     sregs.gdt.limit = 4 * 8 - 1;
     sregs.cr0  = 0x0000_0011;
     sregs.cr4  = 0;
     sregs.efer = 0;
-
     fd.set_sregs(&sregs)?;
     Ok(())
 }
