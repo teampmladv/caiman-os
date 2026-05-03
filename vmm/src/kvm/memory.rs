@@ -40,25 +40,28 @@ pub struct GuestMemory {
 }
 
 impl GuestMemory {
-    /// Crear y registrar la memoria del guest en KVM.
-    pub fn new(vm: &VmFd, mem_mib: u64, track_dirty: bool) -> Result<Self> {
+    /// Allocate guest memory WITHOUT registering with any VM.
+    pub fn alloc(mem_mib: u64, _track_dirty: bool) -> Result<Self> {
         let mut regions = Vec::new();
 
-        // Region 1: RAM convencional [0 - 640 KiB)
-        let low_size = 640 * 1024usize;
-        let low = alloc_region(vm, 0, 0x0000_0000, low_size, 0, track_dirty)
-            .context("allocating low RAM")?;
-        regions.push(low);
-
-        // Region 2: RAM extendida [1 MiB - mem_end)
-        // (el rango 640K-1M esta reservado para VGA/ROM y no lo mapeamos)
+        let low_size  = 640 * 1024usize;
         let high_size = (mem_mib * 1024 * 1024 - 0x0010_0000) as usize;
-        let high = alloc_region(vm, 1, 0x0010_0000, high_size, 1, track_dirty)
-            .context("allocating high RAM")?;
-        regions.push(high);
 
-        debug!("Guest memory: {} MiB ({} regions)", mem_mib, regions.len());
+        let low_ptr = mmap_anon(low_size).context("mmap low RAM")?;
+        regions.push(MemoryRegion { host_ptr: low_ptr,  guest_addr: 0x0000_0000, size: low_size,  slot: 0 });
+
+        let high_ptr = mmap_anon(high_size).context("mmap high RAM")?;
+        regions.push(MemoryRegion { host_ptr: high_ptr, guest_addr: 0x0010_0000, size: high_size, slot: 1 });
+
+        debug!("Guest memory: {} MiB (2 regions, not yet registered)", mem_mib);
         Ok(Self { regions })
+    }
+
+    /// Legacy constructor -- allocates AND registers in one call.
+    pub fn new(vm: &VmFd, mem_mib: u64, track_dirty: bool) -> Result<Self> {
+        let mem = Self::alloc(mem_mib, track_dirty)?;
+        mem.register_with_vm(vm)?;
+        Ok(mem)
     }
 
     /// Escribir un slice de bytes en una direccion guest.
@@ -108,8 +111,24 @@ impl GuestMemory {
         ))
     }
 
-    /// Register all regions with the VM (no-op -- already done at construction).
-    pub fn register_with_vm(&self, _vm: &kvm_ioctls::VmFd) -> anyhow::Result<()> {
+    /// Register all regions with the KVM VM.
+    pub fn register_with_vm(&self, vm: &VmFd) -> anyhow::Result<()> {
+        for r in &self.regions {
+            let flags = 0u32;
+            let region = kvm_userspace_memory_region {
+                slot:            r.slot,
+                flags,
+                guest_phys_addr: r.guest_addr,
+                memory_size:     r.size as u64,
+                userspace_addr:  r.host_ptr as u64,
+            };
+            unsafe {
+                vm.set_user_memory_region(region)
+                    .context("KVM_SET_USER_MEMORY_REGION")?;
+            }
+            debug!("Memory region slot={} guest={:#x} size={}MiB",
+                   r.slot, r.guest_addr, r.size/(1024*1024));
+        }
         Ok(())
     }
 
@@ -127,6 +146,21 @@ impl GuestMemory {
 
 unsafe impl Send for GuestMemory {}
 unsafe impl Sync for GuestMemory {}
+
+fn mmap_anon(size: usize) -> Result<*mut u8> {
+    let ptr = unsafe {
+        libc::mmap(
+            std::ptr::null_mut(), size,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS | libc::MAP_NORESERVE,
+            -1, 0,
+        )
+    };
+    if ptr == libc::MAP_FAILED {
+        anyhow::bail!("mmap failed for {} MiB", size / (1024*1024));
+    }
+    Ok(ptr as *mut u8)
+}
 
 fn alloc_region(
     vm:          &VmFd,
