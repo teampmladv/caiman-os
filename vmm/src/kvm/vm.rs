@@ -1,4 +1,4 @@
-//! vmm/src/kvm/vm.rs — KVM virtual machine setup
+//! vmm/src/kvm/vm.rs -- KVM virtual machine setup
 
 use anyhow::{Context, Result};
 use kvm_bindings::{kvm_pit_config, KVM_PIT_SPEAKER_DUMMY};
@@ -25,7 +25,7 @@ impl Vm {
         // Without both, KVM_RUN returns ENOSPC on AMD processors
         fd.set_tss_address(0xfffbd000).context("KVM_SET_TSS_ADDRESS")?;
         unsafe {
-            // KVM_SET_IDENTITY_MAP_ADDR — required on AMD alongside TSS
+            // KVM_SET_IDENTITY_MAP_ADDR -- required on AMD alongside TSS
             let identity_addr: u64 = 0xfffbc000;
             let ret = libc::ioctl(
                 fd.as_raw_fd(),
@@ -33,7 +33,7 @@ impl Vm {
                 &identity_addr as *const u64,
             );
             if ret < 0 {
-                // Not fatal — some kernels don't support this ioctl
+                // Not fatal -- some kernels don't support this ioctl
                 tracing::warn!("KVM_SET_IDENTITY_MAP_ADDR not supported (ok on Intel)");
             }
         }
