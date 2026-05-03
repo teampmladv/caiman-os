@@ -13,7 +13,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-22c55e)](LICENSE)
 [![Demo](https://img.shields.io/badge/demo-live-22c55e)](https://caimanos.com)
 [![Docs](https://img.shields.io/badge/docs-caimanos.com-22c55e)](https://caimanos.com)
-[![ISO](https://img.shields.io/badge/ISO-58MB-22c55e)](https://github.com/teampmladv/caiman-os/releases/tag/v1.1.0)
+[![ISO](https://img.shields.io/badge/ISO-111MB-22c55e)](https://github.com/teampmladv/caiman-os/releases/tag/v1.1.0)
 
 [**Live Demo**](https://caimanos.com) · [**Documentation**](docs/) · [**Install**](#-install) · [**API Reference**](docs/api/rest.md)
 
@@ -109,11 +109,11 @@ All benchmarks on a single node: AMD EPYC 7443P, 256 GiB RAM, 2× Samsung PM9A3 
 
 ## Download ISO
 
-**Caimán OS v1.1.0 — 58MB** (vs ESXi 350MB, Proxmox 1.2GB)
+**Caimán OS v1.1.0 — 111MB** (vs ESXi 350MB, Proxmox 1.2GB)
 
 | File | Size | SHA256 |
 |------|------|--------|
-| [caiman-os-1.1.0-x86_64.iso](https://github.com/teampmladv/caiman-os/releases/download/v1.1.0/caiman-os-1.1.0-x86_64.iso) | 58 MB | `e8d49c21...cd8a01f` |
+| [caiman-os-1.1.0-x86_64.iso](https://github.com/teampmladv/caiman-os/releases/download/v1.1.0/caiman-os-1.1.0-x86_64.iso) | 111 MB | `e8d49c21...cd8a01f` |
 
 ```bash
 # Flash to USB
