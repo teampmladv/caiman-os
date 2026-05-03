@@ -246,6 +246,22 @@ pub fn load_bzimage(
     mem.write_slice(params_bytes, ZERO_PAGE_ADDR)
         .context("writing boot_params to guest memory")?;
 
+    // E820 table must be at offset 0x2D0 in boot_params (kernel ABI).
+    // Write e820_entries count and table at the correct offsets.
+    let e820_count_off = ZERO_PAGE_ADDR + 0x1E8;
+    mem.write_slice(&[boot_params.e820_entries], e820_count_off)
+        .context("writing e820_entries count")?;
+
+    let e820_table_off = ZERO_PAGE_ADDR + 0x2D0;
+    let e820_bytes = unsafe {
+        std::slice::from_raw_parts(
+            boot_params.e820_table.as_ptr() as *const u8,
+            boot_params.e820_entries as usize * std::mem::size_of::<E820Entry>(),
+        )
+    };
+    mem.write_slice(e820_bytes, e820_table_off)
+        .context("writing E820 table at 0x2D0")?;
+
     // -- 7. Configurar GDT (descriptor tables m?nimas) --------------------
     setup_gdt(mem)?;
 
@@ -307,7 +323,7 @@ fn build_boot_params(
     let mut n = 0usize;
     params.e820_table[n] = E820Entry {
         addr:       0x0000_0000,
-        size:       0x0009_F000,  // 636 KiB (deja 4K para BIOS data area)
+        size:       0x0009_FC00,  // 639 KiB -- trampoline area (deja 4K para BIOS data area)
         entry_type: E820_RAM,
     };
     n += 1;
@@ -315,8 +331,8 @@ fn build_boot_params(
     // Entrada 2: [640 KiB - 1 MiB] -- reservado (VGA, ROM)
     params.e820_table[n] = E820Entry {
         addr:       0x000A_0000,
-        size:       0x0006_0000,  // 384 KiB
-        entry_type: E820_RESERVED,
+        size:       0x0006_0000,  // 384 KiB -- 640K to 1M as RAM for trampoline
+        entry_type: E820_RAM,
     };
     n += 1;
 

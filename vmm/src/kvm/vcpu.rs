@@ -1,9 +1,4 @@
 //! vmm/src/kvm/vcpu.rs -- vCPU thread with serial console (ttyS0)
-//!
-//! v0.3.0: wires up the 16550A serial to KVM_EXIT_IO.
-//! The kernel writes ttyS0 output via outb to port 0x3F8.
-//! We read the port/data from the kvm_run struct (mmapped from the vcpu fd)
-//! and pass each byte to the Serial device, which prints to stdout.
 
 use std::io::{Write, stdout};
 use std::os::unix::io::AsRawFd;
@@ -24,13 +19,8 @@ use crate::virtio::net::{NetState, VIRTIO_NET_MMIO_BASE, VIRTIO_NET_MMIO_SIZE};
 use crate::virtio::blk::{BlkState, VIRTIO_BLK_MMIO_BASE, VIRTIO_BLK_MMIO_SIZE};
 use super::{loader::KernelLoadResult, memory::GuestMemory, vm::Vm};
 
-// -- KVM_RUN mmap wrapper --------------------------------------------------
-
-/// Safe wrapper around the kvm_run memory-mapped structure.
-/// kvm-ioctls mmaps kvm_run internally but doesn't expose it publicly.
-/// Per KVM API docs: kvm_run is at mmap offset 0 of the vcpu fd.
 struct KvmRunPtr {
-    ptr:  *mut kvm_bindings::kvm_run,
+    pub ptr:  *mut kvm_bindings::kvm_run,
     size: usize,
 }
 
@@ -51,28 +41,11 @@ impl KvmRunPtr {
         }
         Ok(Self { ptr: ptr as *mut kvm_bindings::kvm_run, size: mmap_size })
     }
-
-    fn io_port(&self) -> u16 {
-        unsafe { (*self.ptr).__bindgen_anon_1.io.port }
-    }
-
-    fn io_direction(&self) -> u8 {
-        unsafe { (*self.ptr).__bindgen_anon_1.io.direction }
-    }
-
-    fn io_size(&self) -> u8 {
-        unsafe { (*self.ptr).__bindgen_anon_1.io.size }
-    }
-
-    fn io_count(&self) -> u32 {
-        unsafe { (*self.ptr).__bindgen_anon_1.io.count }
-    }
-
-    fn io_data_offset(&self) -> u64 {
-        unsafe { (*self.ptr).__bindgen_anon_1.io.data_offset }
-    }
-
-    /// Read the first byte of IO data (for 1-byte PIO OUT)
+    fn io_port(&self) -> u16 { unsafe { (*self.ptr).__bindgen_anon_1.io.port } }
+    fn io_direction(&self) -> u8 { unsafe { (*self.ptr).__bindgen_anon_1.io.direction } }
+    fn io_size(&self) -> u8 { unsafe { (*self.ptr).__bindgen_anon_1.io.size } }
+    fn io_count(&self) -> u32 { unsafe { (*self.ptr).__bindgen_anon_1.io.count } }
+    pub fn io_data_offset(&self) -> u64 { unsafe { (*self.ptr).__bindgen_anon_1.io.data_offset } }
     fn io_data_u8(&self) -> u8 {
         let offset = self.io_data_offset() as usize;
         unsafe { *((self.ptr as *const u8).add(offset)) }
@@ -80,47 +53,23 @@ impl KvmRunPtr {
 }
 
 impl Drop for KvmRunPtr {
-    fn drop(&mut self) {
-        unsafe { libc::munmap(self.ptr as *mut libc::c_void, self.size); }
-    }
+    fn drop(&mut self) { unsafe { libc::munmap(self.ptr as *mut libc::c_void, self.size); } }
 }
-
-// Safety: KvmRunPtr is accessed only by the owning vCPU thread
 unsafe impl Send for KvmRunPtr {}
 
-// -- vCPU ------------------------------------------------------------------
-
-pub struct Vcpu {
-    id:  u64,
-    fd:  VcpuFd,
-    run: KvmRunPtr,
-}
+pub struct Vcpu { id: u64, fd: VcpuFd, run: KvmRunPtr }
 
 impl Vcpu {
-    pub fn new(
-        vm:     &Vm,
-        id:     u64,
-        mem:    &GuestMemory,
-        kernel: &KernelLoadResult,
-    ) -> Result<Self> {
+    pub fn new(vm: &Vm, id: u64, mem: &GuestMemory, kernel: &KernelLoadResult) -> Result<Self> {
         let fd = vm.vm_fd().create_vcpu(id)?;
-
-        // Get the mmap size kvm reports for kvm_run
-        let mmap_size = vm.kvm()
-            .get_vcpu_mmap_size()
-            .context("KVM_GET_VCPU_MMAP_SIZE")?;
-
+        let mmap_size = vm.kvm().get_vcpu_mmap_size().context("KVM_GET_VCPU_MMAP_SIZE")?;
         let run = KvmRunPtr::new(&fd, mmap_size)?;
-
         configure_cpuid(vm, &fd)?;
         configure_msrs(&fd)?;
         configure_regs(&fd, kernel)?;
         configure_sregs(&fd, mem)?;
-
         Ok(Self { id, fd, run })
     }
-
-    /// Spawn the vCPU run loop in a dedicated OS thread.
     pub fn run(mut self, serial: Arc<Mutex<Serial>>, vnet: Arc<Mutex<NetState>>, vblk: Option<Arc<Mutex<BlkState>>>) -> JoinHandle<()> {
         thread::Builder::new()
             .name(format!("vcpu-{}", self.id))
@@ -128,8 +77,6 @@ impl Vcpu {
             .expect("spawning vCPU thread")
     }
 }
-
-// -- Run loop --------------------------------------------------------------
 
 fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>>, vnet: Arc<Mutex<NetState>>, vblk: Option<Arc<Mutex<BlkState>>>) {
     info!("vCPU {id} entering run loop");
@@ -139,61 +86,47 @@ fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>
                 use kvm_ioctls::VcpuExit::*;
                 match exit {
                     Io => handle_io(id, run, &serial),
-                    MmioRead(addr, data)  => handle_mmio_read(id, addr, data, &vnet, &vblk),
+                    MmioRead(addr, data) => handle_mmio_read(id, addr, data, &vnet, &vblk),
                     MmioWrite(addr, data) => handle_mmio_write(id, addr, data, &serial, &vnet, &vblk),
-                    Hlt => {
-                        debug!("vCPU {id}: HLT -- idling");
-                        std::thread::sleep(std::time::Duration::from_micros(100));
-                    }
-                    Shutdown => {
-                        info!("vCPU {id}: SHUTDOWN");
-                        break;
-                    }
-                    SystemEvent(ev, _) => {
-                        info!("vCPU {id}: system event {ev:#x}");
-                        break;
-                    }
-                    _ => {
-                        debug!("vCPU {id}: unhandled exit {:?}", exit);
-                    }
+                    Hlt => { debug!("vCPU {id}: HLT"); std::thread::sleep(std::time::Duration::from_micros(100)); }
+                    Shutdown => { info!("vCPU {id}: SHUTDOWN"); break; }
+                    SystemEvent(ev, _) => { info!("vCPU {id}: system event {ev:#x}"); break; }
+                    _ => { debug!("vCPU {id}: unhandled exit {:?}", exit); }
                 }
             }
             Err(e) if e.errno() == libc::EINTR => continue,
-            Err(e) => {
-                warn!("vCPU {id}: KVM_RUN error: {e}");
-                break;
-            }
+            Err(e) => { warn!("vCPU {id}: KVM_RUN error: {e}"); break; }
         }
     }
-    // Flush serial buffer on exit
     serial.lock().unwrap().flush();
     info!("vCPU {id} exited run loop");
 }
 
-// -- Exit handlers ---------------------------------------------------------
-
 const KVM_IO_OUT: u8 = 1;
 
-/// Handle KVM_EXIT_IO -- route to serial or reboot port
 fn handle_io(id: u64, run: &KvmRunPtr, serial: &Arc<Mutex<Serial>>) {
     let port      = run.io_port();
     let direction = run.io_direction();
     let size      = run.io_size();
 
-    // Serial COM1: ports 0x3F8..0x3FF
     if port >= SERIAL_BASE && port < SERIAL_BASE + 8 {
-        if direction == KVM_IO_OUT && size == 1 {
+        if direction == KVM_IO_OUT {
             let byte = run.io_data_u8();
             serial.lock().unwrap().write_port(port, byte);
-        } else if direction != KVM_IO_OUT {
-            // IN from serial: return 0 for now
+        } else {
+            let val = serial.lock().unwrap().read_port(port);
+            let offset = run.io_data_offset() as usize;
+            unsafe {
+                let dst = (run.ptr as *mut u8).add(offset);
+                let count = run.io_count() as usize;
+                for i in 0..count { *dst.add(i) = val; }
+            }
         }
         return;
     }
 
-    // ACPI reboot port 0x604
     if port == 0x604 && direction == KVM_IO_OUT {
-        info!("vCPU {id}: ACPI reset -- shutting down");
+        info!("vCPU {id}: ACPI reset");
         std::process::exit(0);
     }
 
@@ -201,22 +134,18 @@ fn handle_io(id: u64, run: &KvmRunPtr, serial: &Arc<Mutex<Serial>>) {
 }
 
 fn handle_mmio_read(id: u64, addr: u64, data: &mut [u8], vnet: &Arc<Mutex<NetState>>, vblk: &Option<Arc<Mutex<BlkState>>>) {
-    // virtio-blk MMIO read
     if addr >= VIRTIO_BLK_MMIO_BASE && addr < VIRTIO_BLK_MMIO_BASE + VIRTIO_BLK_MMIO_SIZE {
         if let Some(blk) = vblk.as_ref() {
-            let offset = addr - VIRTIO_BLK_MMIO_BASE;
-            let val    = blk.lock().unwrap().mmio_read(offset);
-            let bytes  = val.to_le_bytes();
+            let val = blk.lock().unwrap().mmio_read(addr - VIRTIO_BLK_MMIO_BASE);
+            let bytes = val.to_le_bytes();
             let n = data.len().min(4);
             data[..n].copy_from_slice(&bytes[..n]);
             return;
         }
     }
-    // virtio-net MMIO read
     if addr >= VIRTIO_NET_MMIO_BASE && addr < VIRTIO_NET_MMIO_BASE + VIRTIO_NET_MMIO_SIZE {
-        let offset = addr - VIRTIO_NET_MMIO_BASE;
-        let val    = vnet.lock().unwrap().mmio_read(offset);
-        let bytes  = val.to_le_bytes();
+        let val = vnet.lock().unwrap().mmio_read(addr - VIRTIO_NET_MMIO_BASE);
+        let bytes = val.to_le_bytes();
         let n = data.len().min(4);
         data[..n].copy_from_slice(&bytes[..n]);
         return;
@@ -226,43 +155,32 @@ fn handle_mmio_read(id: u64, addr: u64, data: &mut [u8], vnet: &Arc<Mutex<NetSta
 }
 
 fn handle_mmio_write(id: u64, addr: u64, data: &[u8], serial: &Arc<Mutex<Serial>>, vnet: &Arc<Mutex<NetState>>, vblk: &Option<Arc<Mutex<BlkState>>>) {
-    let val32 = if data.len() >= 4 {
-        u32::from_le_bytes([data[0], data[1], data[2], data[3]])
-    } else if !data.is_empty() { data[0] as u32 } else { 0 };
-
-    // PL011 serial at 0x09000000
+    let val32 = if data.len() >= 4 { u32::from_le_bytes([data[0], data[1], data[2], data[3]]) }
+                else if !data.is_empty() { data[0] as u32 } else { 0 };
     if addr >= 0x09000000 && addr < 0x09001000 && !data.is_empty() {
         serial.lock().unwrap().write_port(SERIAL_BASE, data[0]);
         return;
     }
-    // virtio-blk MMIO write
     if addr >= VIRTIO_BLK_MMIO_BASE && addr < VIRTIO_BLK_MMIO_BASE + VIRTIO_BLK_MMIO_SIZE {
-        if let Some(blk) = vblk.as_ref() {
-            blk.lock().unwrap().mmio_write(addr - VIRTIO_BLK_MMIO_BASE, val32);
-            return;
-        }
+        if let Some(blk) = vblk.as_ref() { blk.lock().unwrap().mmio_write(addr - VIRTIO_BLK_MMIO_BASE, val32); return; }
     }
-    // virtio-net MMIO write
     if addr >= VIRTIO_NET_MMIO_BASE && addr < VIRTIO_NET_MMIO_BASE + VIRTIO_NET_MMIO_SIZE {
         vnet.lock().unwrap().mmio_write(addr - VIRTIO_NET_MMIO_BASE, val32);
         return;
     }
-    debug!("vCPU {id}: MMIO write {addr:#x} len={} val={val32:#x}", data.len());
+    debug!("vCPU {id}: MMIO write {addr:#x} val={val32:#x}");
 }
 
-// -- vCPU configuration ----------------------------------------------------
-
 fn configure_cpuid(vm: &Vm, fd: &VcpuFd) -> Result<()> {
-    let mut cpuid = vm.kvm()
-        .get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES)?;
+    let mut cpuid = vm.kvm().get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES)?;
     for entry in cpuid.as_mut_slice() {
         match entry.function {
-            1 => { entry.ecx |= 1 << 31; } // hypervisor bit
+            1 => { entry.ecx |= 1 << 31; }
             0x4000_0000 => {
                 entry.eax = 0x4000_0001;
-                entry.ebx = 0x4b4d_564b; // "KVMK"
-                entry.ecx = 0x564b_4d56; // "VKMV"
-                entry.edx = 0x4d00_0000; // "M\0\0\0"
+                entry.ebx = 0x4b4d_564b;
+                entry.ecx = 0x564b_4d56;
+                entry.edx = 0x4d00_0000;
             }
             _ => {}
         }
@@ -273,9 +191,9 @@ fn configure_cpuid(vm: &Vm, fd: &VcpuFd) -> Result<()> {
 
 fn configure_msrs(fd: &VcpuFd) -> Result<()> {
     let msrs = Msrs::from_entries(&[
-        kvm_bindings::kvm_msr_entry { index: 0x174, data: 0, ..Default::default() }, // SYSENTER_CS
-        kvm_bindings::kvm_msr_entry { index: 0x175, data: 0, ..Default::default() }, // SYSENTER_ESP
-        kvm_bindings::kvm_msr_entry { index: 0x176, data: 0, ..Default::default() }, // SYSENTER_EIP
+        kvm_bindings::kvm_msr_entry { index: 0x174, data: 0, ..Default::default() },
+        kvm_bindings::kvm_msr_entry { index: 0x175, data: 0, ..Default::default() },
+        kvm_bindings::kvm_msr_entry { index: 0x176, data: 0, ..Default::default() },
     ])?;
     fd.set_msrs(&msrs)?;
     Ok(())
@@ -283,9 +201,10 @@ fn configure_msrs(fd: &VcpuFd) -> Result<()> {
 
 fn configure_regs(fd: &VcpuFd, kernel: &KernelLoadResult) -> Result<()> {
     let mut regs = kvm_regs::default();
-    regs.rflags = 0x0000_0000_0000_0002; // reserved bit always set
+    regs.rflags = 0x0000_0000_0000_0002;
     regs.rip    = kernel.kernel_load.offset;
-    regs.rsi    = kernel.boot_params_addr; // -> boot_params
+    regs.rsi    = kernel.boot_params_addr;
+    regs.rsp    = 0x0008_0000;
     fd.set_regs(&regs)?;
     Ok(())
 }
@@ -293,37 +212,16 @@ fn configure_regs(fd: &VcpuFd, kernel: &KernelLoadResult) -> Result<()> {
 fn configure_sregs(fd: &VcpuFd, _mem: &GuestMemory) -> Result<()> {
     let mut sregs = fd.get_sregs()?;
 
-    // Linux bzImage boot protocol: entry in 32-bit protected mode.
-    // DO NOT enable paging or long mode here -- the kernel does that itself.
-
-    // Flat 32-bit code segment (CS)
+    // CS: GDT[1] selector=0x08, 32-bit code
     let code_seg = kvm_bindings::kvm_segment {
-        base:     0,
-        limit:    0xffff_ffff,
-        selector: 0x10,
-        type_:    0xb,  // execute/read, accessed
-        present:  1,
-        dpl:      0,
-        db:       1,    // 32-bit default operand size
-        s:        1,    // code/data (not system)
-        l:        0,    // NOT 64-bit
-        g:        1,    // 4 KiB granularity
-        avl:      0,
+        base: 0, limit: 0xffff_ffff, selector: 0x08,
+        type_: 0xb, present: 1, dpl: 0, db: 1, s: 1, l: 0, g: 1, avl: 0,
         ..Default::default()
     };
-    // Flat 32-bit data segment (DS/ES/FS/GS/SS)
+    // DS/ES/FS/GS/SS: GDT[2] selector=0x10, 32-bit data
     let data_seg = kvm_bindings::kvm_segment {
-        base:     0,
-        limit:    0xffff_ffff,
-        selector: 0x18,
-        type_:    0x3,  // read/write, accessed
-        present:  1,
-        dpl:      0,
-        db:       1,
-        s:        1,
-        l:        0,
-        g:        1,
-        avl:      0,
+        base: 0, limit: 0xffff_ffff, selector: 0x10,
+        type_: 0x3, present: 1, dpl: 0, db: 1, s: 1, l: 0, g: 1, avl: 0,
         ..Default::default()
     };
 
@@ -334,30 +232,20 @@ fn configure_sregs(fd: &VcpuFd, _mem: &GuestMemory) -> Result<()> {
     sregs.gs = data_seg;
     sregs.ss = data_seg;
 
-    // GDT written by loader at 0x5000
     sregs.gdt.base  = 0x5000;
-    sregs.gdt.limit = 0x1f; // 4 entries * 8 bytes - 1
-
-    // CR0: Protected Mode Enable only -- no paging yet
-    sregs.cr0 = 0x0000_0011; // PE=1, MP=1
-    sregs.cr4 = 0;
+    sregs.gdt.limit = 4 * 8 - 1;
+    sregs.cr0  = 0x0000_0011;
+    sregs.cr4  = 0;
     sregs.efer = 0;
 
     fd.set_sregs(&sregs)?;
     Ok(())
 }
 
-// Helper trait for context()
-trait Context<T> {
-    fn context(self, msg: &str) -> Result<T>;
-}
+trait Context<T> { fn context(self, msg: &str) -> Result<T>; }
 impl<T> Context<T> for std::result::Result<T, kvm_ioctls::Error> {
-    fn context(self, msg: &str) -> Result<T> {
-        self.map_err(|e| anyhow::anyhow!("{msg}: {e}"))
-    }
+    fn context(self, msg: &str) -> Result<T> { self.map_err(|e| anyhow::anyhow!("{msg}: {e}")) }
 }
 impl<T> Context<T> for std::result::Result<T, std::io::Error> {
-    fn context(self, msg: &str) -> Result<T> {
-        self.map_err(|e| anyhow::anyhow!("{msg}: {e}"))
-    }
+    fn context(self, msg: &str) -> Result<T> { self.map_err(|e| anyhow::anyhow!("{msg}: {e}")) }
 }
