@@ -292,9 +292,57 @@ fn configure_regs(fd: &VcpuFd, kernel: &KernelLoadResult) -> Result<()> {
 
 fn configure_sregs(fd: &VcpuFd, _mem: &GuestMemory) -> Result<()> {
     let mut sregs = fd.get_sregs()?;
-    sregs.cr0  |= 0x80000001; // PE + PG
-    sregs.cr4  |= 0x20;       // PAE
-    sregs.efer |= 0x500;      // LME + LMA
+
+    // Linux bzImage boot protocol: entry in 32-bit protected mode.
+    // DO NOT enable paging or long mode here -- the kernel does that itself.
+
+    // Flat 32-bit code segment (CS)
+    let code_seg = kvm_bindings::kvm_segment {
+        base:     0,
+        limit:    0xffff_ffff,
+        selector: 0x10,
+        type_:    0xb,  // execute/read, accessed
+        present:  1,
+        dpl:      0,
+        db:       1,    // 32-bit default operand size
+        s:        1,    // code/data (not system)
+        l:        0,    // NOT 64-bit
+        g:        1,    // 4 KiB granularity
+        avl:      0,
+        ..Default::default()
+    };
+    // Flat 32-bit data segment (DS/ES/FS/GS/SS)
+    let data_seg = kvm_bindings::kvm_segment {
+        base:     0,
+        limit:    0xffff_ffff,
+        selector: 0x18,
+        type_:    0x3,  // read/write, accessed
+        present:  1,
+        dpl:      0,
+        db:       1,
+        s:        1,
+        l:        0,
+        g:        1,
+        avl:      0,
+        ..Default::default()
+    };
+
+    sregs.cs = code_seg;
+    sregs.ds = data_seg;
+    sregs.es = data_seg;
+    sregs.fs = data_seg;
+    sregs.gs = data_seg;
+    sregs.ss = data_seg;
+
+    // GDT written by loader at 0x5000
+    sregs.gdt.base  = 0x5000;
+    sregs.gdt.limit = 0x1f; // 4 entries * 8 bytes - 1
+
+    // CR0: Protected Mode Enable only -- no paging yet
+    sregs.cr0 = 0x0000_0011; // PE=1, MP=1
+    sregs.cr4 = 0;
+    sregs.efer = 0;
+
     fd.set_sregs(&sregs)?;
     Ok(())
 }
