@@ -1,11 +1,11 @@
-//! virtio/blk.rs — virtio-blk MMIO device
+//! virtio/blk.rs -- virtio-blk MMIO device
 //!
 //! MMIO base: 0xD001_0000  size: 0x1000  IRQ: 6
 //! Kernel cmdline: virtio_mmio.device=0x1000@0xd0010000:6
 //!
 //! Data path:
-//!   Guest writes request to virtqueue → we read header (sector + type)
-//!   → read/write disk image file → write status byte → inject IRQ
+//!   Guest writes request to virtqueue -> we read header (sector + type)
+//!   -> read/write disk image file -> write status byte -> inject IRQ
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -20,7 +20,7 @@ use tracing::{debug, info, warn};
 use crate::kvm::memory::GuestMemory;
 use super::queue::{Virtqueue, VIRTQ_DESC_F_WRITE};
 
-// ── Constants ─────────────────────────────────────────────────────────────
+// -- Constants -------------------------------------------------------------
 
 pub const VIRTIO_BLK_MMIO_BASE: u64 = 0xD001_0000;
 pub const VIRTIO_BLK_MMIO_SIZE: u64 = 0x1000;
@@ -70,7 +70,7 @@ const REG_QUEUE_USED_HI: u64 = 0x0A4;
 // Block config at 0x100: capacity(8) + size_max(4) + seg_max(4) + ...
 const REG_CONFIG:        u64 = 0x100;
 
-// ── MMIO state ────────────────────────────────────────────────────────────
+// -- MMIO state ------------------------------------------------------------
 
 pub struct BlkState {
     sector_count:    u64,
@@ -138,7 +138,7 @@ impl BlkState {
     }
 }
 
-// ── VirtioBlk device ──────────────────────────────────────────────────────
+// -- VirtioBlk device ------------------------------------------------------
 
 pub struct VirtioBlk {
     pub state:  Arc<Mutex<BlkState>>,
@@ -191,7 +191,7 @@ impl VirtioBlk {
     }
 }
 
-// ── Block request processing ──────────────────────────────────────────────
+// -- Block request processing ----------------------------------------------
 
 fn blk_dataplane(
     image_path: String,

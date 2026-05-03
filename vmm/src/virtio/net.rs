@@ -1,12 +1,12 @@
-//! virtio/net.rs — virtio-net MMIO device
+//! virtio/net.rs -- virtio-net MMIO device
 //!
 //! MMIO base: 0xD000_0000  size: 0x1000  IRQ: 5
 //! Tell the guest via cmdline:
 //!   virtio_mmio.device=0x1000@0xd0000000:5
 //!
 //! Data path:
-//!   Guest TX → virtqueue → Tap::send() → host network
-//!   Host RX  → Tap::recv() → virtqueue → inject IRQ → guest
+//!   Guest TX -> virtqueue -> Tap::send() -> host network
+//!   Host RX  -> Tap::recv() -> virtqueue -> inject IRQ -> guest
 
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -19,7 +19,7 @@ use crate::kvm::memory::GuestMemory;
 use super::queue::{Virtqueue, VIRTQ_DESC_F_WRITE};
 use super::tap::Tap;
 
-// ── Constants ─────────────────────────────────────────────────────────────
+// -- Constants -------------------------------------------------------------
 
 pub const VIRTIO_NET_MMIO_BASE: u64 = 0xD000_0000;
 pub const VIRTIO_NET_MMIO_SIZE: u64 = 0x1000;
@@ -58,7 +58,7 @@ const REG_QUEUE_USED_LO:  u64 = 0x0A0;
 const REG_QUEUE_USED_HI:  u64 = 0x0A4;
 const REG_CONFIG:         u64 = 0x100; // MAC address starts here
 
-// ── Shared state ──────────────────────────────────────────────────────────
+// -- Shared state ----------------------------------------------------------
 
 pub struct NetState {
     pub mac:           [u8; 6],
@@ -152,7 +152,7 @@ impl NetState {
     }
 }
 
-// ── VirtioNet device ──────────────────────────────────────────────────────
+// -- VirtioNet device ------------------------------------------------------
 
 pub struct VirtioNet {
     pub state:  Arc<Mutex<NetState>>,
@@ -207,7 +207,7 @@ impl VirtioNet {
     }
 }
 
-// ── Data plane ────────────────────────────────────────────────────────────
+// -- Data plane ------------------------------------------------------------
 
 fn dataplane_loop(
     tap_name: String,
@@ -224,7 +224,7 @@ fn dataplane_loop(
     info!("virtio-net dataplane running on TAP '{}'", tap.name());
 
     loop {
-        // ── TX: drain guest TX queue → TAP ───────────────────────────────
+        // -- TX: drain guest TX queue -> TAP -------------------------------
         {
             let mut st = state.lock().unwrap();
             while let Some(head) = st.queues[1].next_avail(&mem) {
@@ -250,7 +250,7 @@ fn dataplane_loop(
             }
         }
 
-        // ── RX: TAP → guest RX queue ──────────────────────────────────────
+        // -- RX: TAP -> guest RX queue --------------------------------------
         if let Some(n) = tap.recv(&mut rx_buf) {
             let mut st = state.lock().unwrap();
             if let Some(head) = st.queues[0].next_avail(&mem) {
@@ -274,7 +274,7 @@ fn dataplane_loop(
                     st.irq_status |= 0x1;
                     drop(st);
                     let _ = irqfd.write(1); // inject RX interrupt
-                    debug!("virtio-net RX: {} bytes → guest", n);
+                    debug!("virtio-net RX: {} bytes -> guest", n);
                 }
             }
         }

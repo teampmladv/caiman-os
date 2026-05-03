@@ -1,6 +1,6 @@
-//! caiman-vmm v0.6.0 — KVM hypervisor without QEMU
+//! caiman-vmm v0.6.0 -- KVM hypervisor without QEMU
 //!
-//! v0.6.0 adds: virtio-blk wired — disco funcional dentro del guest
+//! v0.6.0 adds: virtio-blk wired -- disco funcional dentro del guest
 
 use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
@@ -19,7 +19,7 @@ use virtio::net::{VirtioNet, VIRTIO_NET_MMIO_BASE};
 use virtio::blk::{VirtioBlk, VIRTIO_BLK_MMIO_BASE};
 
 #[derive(Parser)]
-#[command(name = "caiman-vmm", version = "0.6.0", about = "KVM VMM — no QEMU")]
+#[command(name = "caiman-vmm", version = "0.6.0", about = "KVM VMM -- no QEMU")]
 struct Args {
     #[arg(long)] kernel:  String,
     #[arg(long)] initrd:  Option<String>,
@@ -44,18 +44,18 @@ async fn main() -> Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     let args = Args::parse();
-    info!("caiman-vmm v{} —", env!("CARGO_PKG_VERSION"), vm_id={} mem={}MiB cpus={}", args.vm_id, args.mem_mib, args.cpus);
+    info!("caiman-vmm v{} --", env!("CARGO_PKG_VERSION"), vm_id={} mem={}MiB cpus={}", args.vm_id, args.mem_mib, args.cpus);
     run(args).await
 }
 
 async fn run(args: Args) -> Result<()> {
-    // ── 1. Guest memory ───────────────────────────────────────────────────
+    // -- 1. Guest memory ---------------------------------------------------
     let kvm_fd = Kvm::new().context("opening /dev/kvm")?;
     let vm_fd  = kvm_fd.create_vm().context("KVM_CREATE_VM")?;
     let mem    = kvm::memory::GuestMemory::new(&vm_fd, args.mem_mib, false)?;
     let mem    = Arc::new(mem);
 
-    // ── 2. Load kernel ────────────────────────────────────────────────────
+    // -- 2. Load kernel ----------------------------------------------------
     let lr = kvm::loader::load_bzimage(
         &*mem,
         std::path::Path::new(&args.kernel),
@@ -65,11 +65,11 @@ async fn run(args: Args) -> Result<()> {
     )?;
     info!("Kernel entry={:#x}", lr.entry_point);
 
-    // ── 3. VM ─────────────────────────────────────────────────────────────
+    // -- 3. VM -------------------------------------------------------------
     let vm = kvm::vm::Vm::new(&*mem)?;
 
-    // ── 4. virtio-net ─────────────────────────────────────────────────────
-    // Parse vm_id to u32 for MAC/netlink — strip "vm-" prefix, take decimal or hash
+    // -- 4. virtio-net -----------------------------------------------------
+    // Parse vm_id to u32 for MAC/netlink -- strip "vm-" prefix, take decimal or hash
     let vm_num: u32 = args.vm_id.trim_start_matches("vm-")
         .parse::<u32>()
         .unwrap_or_else(|_| {
@@ -79,7 +79,7 @@ async fn run(args: Args) -> Result<()> {
     let mac  = [0x02, 0xaa, 0xbb, 0x00, (vm_num >> 8) as u8, (vm_num & 0xFF) as u8];
     let vnet = VirtioNet::new(vm.vm_fd(), mac)?;
 
-    // ── 5. virtio-blk (optional) ──────────────────────────────────────────
+    // -- 5. virtio-blk (optional) ------------------------------------------
     let vblk = if let Some(ref disk) = args.disk {
         let blk = VirtioBlk::new(disk, false)?;
         blk.register_irq(vm.vm_fd())?;
@@ -91,7 +91,7 @@ async fn run(args: Args) -> Result<()> {
         None
     };
 
-    // ── 6. Serial + vCPUs ────────────────────────────────────────────────
+    // -- 6. Serial + vCPUs ------------------------------------------------
     let serial = Arc::new(Mutex::new(Serial::new()));
     let load   = kvm::loader::KernelLoadResult {
         kernel_load:      kvm::loader::KernelLoadOffset { offset: lr.entry_point },
@@ -112,16 +112,16 @@ async fn run(args: Args) -> Result<()> {
         .collect::<Result<_>>()?;
 
     info!("VM running:");
-    println!("─────────────────────────────────────────────────────");
+    println!("-----------------------------------------------------");
 
-    // ── 7. virtio-net dataplane ───────────────────────────────────────────
+    // -- 7. virtio-net dataplane -------------------------------------------
     vnet.start_dataplane(&args.tap, Arc::clone(&mem))?;
 
-    // ── 8. XDP ───────────────────────────────────────────────────────────
+    // -- 8. XDP -----------------------------------------------------------
     netlink_ctrl::vm_add(vm_num, &mac, &args.uplink).await.ok();
 
     for h in handles { let _ = h.join(); }
-    println!("─────────────────────────────────────────────────────");
+    println!("-----------------------------------------------------");
     netlink_ctrl::vm_del(vm_num).await.ok();
     info!("VM {} shutdown", args.vm_id);
     Ok(())

@@ -1,8 +1,8 @@
-//! vmm/src/device/serial.rs — UART 16550A emulación
+//! vmm/src/device/serial.rs -- UART 16550A emulacion
 //!
 //! Implementa el UART 16550A que el kernel de Linux usa como consola
 //! serie (ttyS0). El kernel escribe caracteres via outb al puerto 0x3F8
-//! y los leemos aquí, imprimiéndolos en stdout del proceso VMM.
+//! y los leemos aqu?, imprimiendolos en stdout del proceso VMM.
 //!
 //! Registros 16550A (base = 0x3F8 para COM1):
 //!   0x3F8  RBR/THR/DLL  Receive Buffer / Transmit Holding / Divisor LSB
@@ -63,7 +63,7 @@ impl Serial {
                 if self.dlab {
                     self.dll = data;  // Divisor Latch LSB
                 } else {
-                    // THR — Transmit Holding Register: el guest está enviando un byte
+                    // THR -- Transmit Holding Register: el guest esta enviando un byte
                     self.transmit_byte(data);
                 }
             }
@@ -74,7 +74,7 @@ impl Serial {
                     self.ier = data;  // Interrupt Enable Register
                 }
             }
-            2 => { /* FCR write — ignoramos FIFO control */ }
+            2 => { /* FCR write -- ignoramos FIFO control */ }
             3 => {
                 self.lcr  = data;
                 self.dlab = data & 0x80 != 0;
@@ -111,7 +111,7 @@ impl Serial {
     fn transmit_byte(&mut self, b: u8) {
         self.output.push(b);
 
-        // Flush en newline o cuando el buffer está lleno
+        // Flush en newline o cuando el buffer esta lleno
         if b == b'\n' || self.output.len() >= 256 {
             self.flush();
         }

@@ -1,13 +1,13 @@
-//! virtio/queue.rs — minimal virtqueue (split-ring, virtio 1.x spec)
+//! virtio/queue.rs -- minimal virtqueue (split-ring, virtio 1.x spec)
 //!
 //! Implements the virtqueue ring buffer shared between guest and host.
-//! No external crate dependencies — reads directly from GuestMemory.
+//! No external crate dependencies -- reads directly from GuestMemory.
 //!
 //! Layout in guest RAM (set by driver via MMIO writes):
 //!
-//!   desc_table   → array of 16-byte descriptors
-//!   avail_ring   → flags(2) + idx(2) + ring[N](2)
-//!   used_ring    → flags(2) + idx(2) + elem[N](8)
+//!   desc_table   -> array of 16-byte descriptors
+//!   avail_ring   -> flags(2) + idx(2) + ring[N](2)
+//!   used_ring    -> flags(2) + idx(2) + elem[N](8)
 
 use anyhow::{bail, Result};
 use crate::kvm::memory::GuestMemory;
@@ -27,7 +27,7 @@ pub struct Descriptor {
     pub next:  u16,
 }
 
-/// Virtqueue state — configured by the guest via MMIO writes
+/// Virtqueue state -- configured by the guest via MMIO writes
 pub struct Virtqueue {
     pub size:       u16,
     pub ready:      bool,
@@ -53,7 +53,7 @@ impl Virtqueue {
         }
     }
 
-    // ── MMIO configuration (called by MMIO write handler) ─────────────────
+    // -- MMIO configuration (called by MMIO write handler) -----------------
 
     pub fn set_desc_table(&mut self, low: u32, high: u32) {
         self.desc_table = (high as u64) << 32 | low as u64;
@@ -65,7 +65,7 @@ impl Virtqueue {
         self.used_ring = (high as u64) << 32 | low as u64;
     }
 
-    // ── Descriptor iteration ──────────────────────────────────────────────
+    // -- Descriptor iteration ----------------------------------------------
 
     /// Returns the next available descriptor chain head, if any.
     pub fn next_avail(&mut self, mem: &GuestMemory) -> Option<u16> {
@@ -115,7 +115,7 @@ impl Virtqueue {
         true
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────
+    // -- Private helpers ---------------------------------------------------
 
     fn read_avail_idx(&self, mem: &GuestMemory) -> Option<u16> {
         if self.avail_ring == 0 { return None; }

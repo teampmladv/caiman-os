@@ -1,4 +1,4 @@
-//! virtio/tap.rs — Linux TUN/TAP interface
+//! virtio/tap.rs -- Linux TUN/TAP interface
 //!
 //! Creates a TAP interface on the host. The VMM reads packets the guest
 //! sends via virtio-net TX queue and writes them to the TAP fd.
@@ -38,7 +38,7 @@ impl Tap {
             .read(true)
             .write(true)
             .open("/dev/net/tun")
-            .context("/dev/net/tun — is TUN/TAP module loaded?")?;
+            .context("/dev/net/tun -- is TUN/TAP module loaded?")?;
 
         let mut ifr = Ifreq {
             ifr_name:  [0u8; 16],

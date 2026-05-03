@@ -1,4 +1,4 @@
-//! ebpf/mod.rs — BPF map setup helpers
+//! ebpf/mod.rs -- BPF map setup helpers
 //! Creates per-VM pin directories used by the caiman_net.ko XDP program.
 use anyhow::Result;
 use std::fs;
