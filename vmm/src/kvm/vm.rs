@@ -20,6 +20,10 @@ impl Vm {
 
         let fd = kvm.create_vm().context("KVM_CREATE_VM")?;
 
+        // AMD requires TSS address before irqchip creation
+        // Without this, KVM_RUN returns ENOSPC on AMD processors
+        fd.set_tss_address(0xfffbd000).context("KVM_SET_TSS_ADDRESS")?;
+
         // In-kernel irqchip: no userspace interrupt emulation needed
         fd.create_irq_chip().context("KVM_CREATE_IRQCHIP")?;
 
