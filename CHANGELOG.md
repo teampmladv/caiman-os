@@ -11,7 +11,7 @@ All notable changes to Caimán OS are documented here.
 Install Caimán OS on bare metal with a single USB drive — like ESXi, but 6× smaller and $0 license.
 
 #### What's new
-- `caiman-os-1.1.0-x86_64.iso` — 58 MB bootable ISO (ESXi: 350MB, Proxmox: 1.2GB)
+- `caiman-os-1.1.0-x86_64.iso` — 111 MB bootable ISO (ESXi: 350MB, Proxmox: 1.2GB)
 - `iso/installer/caiman-install.sh` — TUI installer with hardware detection
 - `iso/grub/grub.cfg` — GRUB2 EFI boot menu (Install / Live / Debug)
 - `iso/scripts/build-iso.sh` — Alpine-based ISO builder

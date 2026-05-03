@@ -4,13 +4,13 @@
 
 | Version | Size | Download | SHA256 |
 |---------|------|----------|--------|
-| v1.1.0 | 58 MB | [caiman-os-1.1.0-x86_64.iso](https://github.com/teampmladv/caiman-os/releases/download/v1.1.0/caiman-os-1.1.0-x86_64.iso) | `e8d49c21b5bde468e779c66ff53d72ba092b4b8c784a084c9592f3069cd8a01f` |
+| v1.1.0 | 111 MB | [caiman-os-1.1.0-x86_64.iso](https://github.com/teampmladv/caiman-os/releases/download/v1.1.0/caiman-os-1.1.0-x86_64.iso) | `f6b513b069da67e7ffb84602f9aac753023df94e0d2b2ffeb29d4abae2484509` |
 
 **vs. competition:**
 
 | Product | ISO Size |
 |---------|----------|
-| **Caimán OS** | **58 MB** |
+| **Caimán OS** | **111 MB** |
 | VMware ESXi | 350 MB |
 | Proxmox VE | 1.2 GB |
 | Nutanix CE | 8.5 GB |
@@ -213,7 +213,7 @@ qemu-system-x86_64 \
 git clone https://github.com/teampmladv/caiman-os
 cd caiman-os
 sudo ./iso/scripts/build-iso.sh 1.1.0
-# → caiman-os-1.1.0-x86_64.iso (58 MB)
+# → caiman-os-1.1.0-x86_64.iso (111 MB)
 ```
 
 Build requirements:
