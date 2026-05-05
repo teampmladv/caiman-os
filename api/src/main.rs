@@ -5,7 +5,7 @@
 
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
-use axum::{Router, routing::{get, post, delete}, extract::{Path, Json, State}, http::StatusCode, response::IntoResponse};
+use axum::{Router, routing::{get, post, delete}, extract::{Path, Json, State, WebSocketUpgrade}, http::StatusCode, response::IntoResponse};
 use serde_json::{json, Value};
 use tower_http::cors::CorsLayer;
 use tracing::info;
@@ -262,6 +262,7 @@ async fn main() {
             .route("/api/vms/:id/stop",               post(stop_vm_h))
             .route("/api/vms/:id/force-stop",         post(force_stop_h))
             .route("/api/vms/:id/console",            get(vm_logs))
+            .route("/api/vms/:id/console/ws",         get(vm_console_ws))
             .route("/api/vms/:id/migrate",            post(migrate_vm))
             .route("/api/nodes",                      get(get_nodes_real))
             .route("/api/cluster",                    get(get_cluster_real))
@@ -270,5 +271,58 @@ async fn main() {
         info!("PRODUCTION MODE — listening on {addr}");
         let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
         axum::serve(listener, app).await.unwrap();
+    }
+}
+
+// ── WebSocket console handler ─────────────────────────────────────────────
+async fn vm_console_ws(
+    Path(id): Path<String>,
+    ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_console(socket, id))
+}
+
+async fn handle_console(mut socket: axum::extract::ws::WebSocket, id: String) {
+    use axum::extract::ws::Message;
+    use tokio::io::AsyncBufReadExt;
+
+    let log_path = format!("/var/run/caiman/{id}.log");
+
+    // Send existing log first
+    if let Ok(content) = std::fs::read_to_string(&log_path) {
+        for line in content.lines() {
+            if socket.send(Message::Text(line.to_string().into())).await.is_err() {
+                return;
+            }
+        }
+    }
+
+    // Stream new lines as they arrive
+    let Ok(file) = tokio::fs::File::open(&log_path).await else {
+        let _ = socket.send(Message::Text("[console] Log not available".into())).await;
+        return;
+    };
+
+    let mut reader = tokio::io::BufReader::new(file);
+    let mut line = String::new();
+
+    loop {
+        line.clear();
+        match reader.read_line(&mut line).await {
+            Ok(0) => {
+                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                // Check for client disconnect
+                if socket.send(Message::Ping(vec![].into())).await.is_err() {
+                    break;
+                }
+            }
+            Ok(_) => {
+                let msg = line.trim_end_matches('\n').to_string();
+                if socket.send(Message::Text(msg.into())).await.is_err() {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
     }
 }
