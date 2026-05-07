@@ -29,7 +29,7 @@ impl Vm {
             let identity_addr: u64 = 0xfffbc000;
             let ret = libc::ioctl(
                 fd.as_raw_fd(),
-                0x4008ae48i32, // KVM_SET_IDENTITY_MAP_ADDR
+                0x4008ae48u64, // KVM_SET_IDENTITY_MAP_ADDR
                 &identity_addr as *const u64,
             );
             if ret < 0 {

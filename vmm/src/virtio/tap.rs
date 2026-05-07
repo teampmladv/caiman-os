@@ -49,7 +49,7 @@ impl Tap {
         let copy_len = name_bytes.len().min(15);
         ifr.ifr_name[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
 
-        let rc = unsafe { libc::ioctl(file.as_raw_fd(), TUNSETIFF as i32, &ifr as *const _) };
+        let rc = unsafe { libc::ioctl(file.as_raw_fd(), TUNSETIFF, &ifr as *const _) };
         if rc < 0 {
             anyhow::bail!("TUNSETIFF failed: {}", std::io::Error::last_os_error());
         }
