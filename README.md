@@ -123,7 +123,7 @@ All benchmarks on a single node: AMD EPYC 7443P, 256 GiB RAM, 2× Samsung PM9A3 
 
 | File | Size | SHA256 |
 |------|------|--------|
-| [caiman-os-1.2.0-x86_64.iso](https://github.com/teampmladv/caiman-os/releases/download/v1.1.0/caiman-os-1.2.0-x86_64.iso) | 111 MB | `e8d49c21...cd8a01f` |
+| [caiman-os-1.2.0-x86_64.iso](https://github.com/teampmladv/caiman-os/releases/download/v1.1.0/caiman-os-1.2.0-x86_64.iso) | 88 MB | `178f5c71...b45dfde` |
 
 ```bash
 # Flash to USB
