@@ -119,18 +119,18 @@ All benchmarks on a single node: AMD EPYC 7443P, 256 GiB RAM, 2× Samsung PM9A3 
 
 ## Download ISO
 
-**Caimán OS v1.1.0 — 111MB** (vs ESXi 350MB, Proxmox 1.2GB)
+**Caimán OS v1.2.0 — 88MB** (vs ESXi 350MB, Proxmox 1.2GB)
 
 | File | Size | SHA256 |
 |------|------|--------|
-| [caiman-os-1.1.0-x86_64.iso](https://github.com/teampmladv/caiman-os/releases/download/v1.1.0/caiman-os-1.1.0-x86_64.iso) | 111 MB | `e8d49c21...cd8a01f` |
+| [caiman-os-1.2.0-x86_64.iso](https://github.com/teampmladv/caiman-os/releases/download/v1.1.0/caiman-os-1.2.0-x86_64.iso) | 111 MB | `e8d49c21...cd8a01f` |
 
 ```bash
 # Flash to USB
-dd if=caiman-os-1.1.0-x86_64.iso of=/dev/sdX bs=4M status=progress
+dd if=caiman-os-1.2.0-x86_64.iso of=/dev/sdX bs=4M status=progress
 
 # Test with QEMU
-qemu-system-x86_64 -cdrom caiman-os-1.1.0-x86_64.iso -m 4G -enable-kvm
+qemu-system-x86_64 -cdrom caiman-os-1.2.0-x86_64.iso -m 4G -enable-kvm
 
 # Or install with one command (on existing Linux)
 curl -fsSL https://caimanos.com/install.sh | sudo bash
