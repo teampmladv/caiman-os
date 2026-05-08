@@ -9,15 +9,25 @@
 **Open-source hyperconverged infrastructure without QEMU.**
 
 [![CI](https://github.com/teampmladv/caiman-os/actions/workflows/ci.yml/badge.svg)](https://github.com/teampmladv/caiman-os/actions)
-[![Release](https://img.shields.io/badge/release-v1.1.0-22c55e)](https://github.com/teampmladv/caiman-os/releases)
+[![Release](https://img.shields.io/badge/release-v1.2.0-22c55e)](https://github.com/teampmladv/caiman-os/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-22c55e)](LICENSE)
 [![Demo](https://img.shields.io/badge/demo-live-22c55e)](https://caimanos.com)
 [![Docs](https://img.shields.io/badge/docs-caimanos.com-22c55e)](https://caimanos.com)
-[![ISO](https://img.shields.io/badge/ISO-111MB-22c55e)](https://github.com/teampmladv/caiman-os/releases/tag/v1.1.0)
+[![ISO](https://img.shields.io/badge/ISO-88MB-22c55e)](https://github.com/teampmladv/caiman-os/releases/tag/v1.2.0)
 
 [**Live Demo**](https://caimanos.com) · [**Documentation**](docs/) · [**Install**](#-install) · [**API Reference**](docs/api/rest.md)
 
 </div>
+
+---
+
+## What's new in v1.2.0
+
+- **JWT multi-cluster auth** — connect multiple clusters from a single UI, roles: `read-only / operator / admin`
+- **caiman-cni v2** — automatic NAT/bridge/isolated networking, built-in IPAM, auto-detects uplink
+- **Import engine** — migrate VMs from Proxmox, vSphere, AWS, OpenStack, oVirt, Nutanix, Oracle VM
+- **ISO installer v1.2.0** — 88MB bootable ISO, auto-network detection, generates JWT token on screen
+- **ARM support** — runs on Raspberry Pi 4, Mac Mini M1, any aarch64 hardware
 
 ---
 
@@ -272,3 +282,53 @@ Enterprise features (multi-tenant, SSO, billing, SLA support) available under a 
 [caimanos.com](https://caimanos.com) · [GitHub](https://github.com/teampmladv/caiman-os) · [Releases](https://github.com/teampmladv/caiman-os/releases)
 
 </div>
+
+---
+
+## 📦 Distribution
+
+### ISO (recommended — works on any PC)
+
+```bash
+# Download
+wget https://github.com/teampmladv/caiman-os/releases/download/v1.2.0/caiman-os-1.2.0-x86_64.iso
+
+# Flash to USB
+dd if=caiman-os-1.2.0-x86_64.iso of=/dev/sdX bs=4M status=progress
+
+# Test with QEMU
+qemu-system-x86_64 -cdrom caiman-os-1.2.0-x86_64.iso -m 4G -enable-kvm
+```
+
+Boot from USB → select "Install Caimán OS" → follow the installer.
+The installer auto-detects network, configures NAT for VMs, and prints your admin token on screen.
+
+### One-line installer (existing Linux)
+
+```bash
+curl -sSL https://caimanos.com/install.sh | bash
+```
+
+Supports: Ubuntu 20.04+, Debian 11+, CentOS 8+, Alpine 3.18+
+
+### Docker
+
+```bash
+docker run -d --name caiman \
+  --device /dev/kvm \
+  --cap-add NET_ADMIN \
+  -p 8765:8765 \
+  -e CAIMAN_JWT_SECRET=your-secret \
+  ghcr.io/teampmladv/caiman-api:1.2.0
+```
+
+### Hardware requirements
+
+| | Minimum | Recommended |
+|---|---|---|
+| CPU | x86_64 or aarch64, 2 cores | 8+ cores with VT-x/AMD-V |
+| RAM | 2 GiB | 16 GiB |
+| Disk | 20 GB | 500 GB NVMe |
+| Network | 100 Mbps | 1 GbE+ |
+
+Works on: recycled PCs, Mac Mini, ThinkPad, Raspberry Pi 4, bare metal servers.
