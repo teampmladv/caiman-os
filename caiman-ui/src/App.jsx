@@ -49,7 +49,7 @@ const GROUPS = {
 const VIEWS = { cluster: ClusterView, import: Import, dashboard: Dashboard, vms: VMs, topo: Topology, console: Console, snapshots: Snapshots, storage: Storage, network: Network, gpu: GPU, drs: DRS, alerts: Alerts, backup: Backup, billing: Billing, tenants: Tenants, apikeys: APIKeys, logs: Logs }
 
 function Layout() {
-  const { view, setView, toast, vms, alerts } = useApp()
+  const { view, setView, toast, vms, alerts, isLive } = useApp()
   const ActiveView = VIEWS[view] || Dashboard
   const firedAlerts = alerts.filter(a => a.active && a.fired > 0).length
   const runningVMs = vms.filter(v => v.status === 'RUNNING').length
@@ -118,9 +118,9 @@ function Layout() {
           <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 14, color: '#e2e8f0', flex: 1 }}>
             {NAV.find(n => n.id === view)?.label || 'Dashboard'}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#22c55e' }}>
-            <span style={{ width: 5, height: 5, background: '#22c55e', borderRadius: '50%', display: 'inline-block', animation: 'pulse 2s infinite' }}></span>
-            CLUSTER LIVE
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: isLive ? '#22c55e' : '#475569' }}>
+            <span style={{ width: 5, height: 5, background: isLive ? '#22c55e' : '#475569', borderRadius: '50%', display: 'inline-block', animation: isLive ? 'pulse 2s infinite' : 'none' }}></span>
+            {isLive ? 'LIVE' : 'DEMO'}
           </div>
           <div style={{ fontSize: 10, color: '#475569', padding: '3px 8px', border: '1px solid #1e2a3a', fontFamily: 'IBM Plex Mono, monospace' }}>
             {getActiveCluster()?.name || 'no cluster'}
