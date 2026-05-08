@@ -160,7 +160,7 @@ async fn start_vm_h(Path(id): Path<String>) -> impl IntoResponse {
         name: state.name, cpus: Some(state.cpus),
         mem_mib: Some(state.mem_mib), kernel: Some(state.kernel),
         disk: state.disk, uplink: Some(state.uplink),
-        cmdline: None, labels: Some(state.labels),
+        cmdline: None, labels: Some(state.labels), net_mode: None,
     };
     let hostname = sysinfo::System::host_name().unwrap_or_else(|| "node".into());
     match spawn_vm(req, &hostname).await {
