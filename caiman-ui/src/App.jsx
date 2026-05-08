@@ -14,6 +14,7 @@ import GPU from './views/GPU.jsx'
 import Storage from './views/Storage.jsx'
 import Network from './views/Network.jsx'
 import Logs from './views/Logs.jsx'
+import ClusterSwitcher from './components/clusters/ClusterSwitcher.jsx'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', group: 'overview',  icon: <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" width="18" height="18"><rect x="2" y="2" width="7" height="7" rx="1"/><rect x="11" y="2" width="7" height="7" rx="1"/><rect x="2" y="11" width="7" height="7" rx="1"/><rect x="11" y="11" width="7" height="7" rx="1"/></svg> },
@@ -81,8 +82,8 @@ function Layout() {
               <div style={{ fontSize: 9, color: '#334155', letterSpacing: '0.14em', padding: '10px 16px 4px', fontWeight: 500 }}>{GROUPS[group]}</div>
               {items.map(item => (
                 <button key={item.id} onClick={() => setView(item.id)}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px', background: view === item.id ? 'rgba(34,197,94,0.08)' : 'transparent', border: 'none', borderLeft: view === item.id ? '2px solid #22c55e' : '2px solid transparent', color: view === item.id ? '#22c55e' : '#64748b', cursor: 'pointer', fontSize: 11, fontFamily: 'IBM Plex Mono, monospace', transition: 'all 0.15s', textAlign: 'left' }}>
-                  <span style={{ color: view === item.id ? '#22c55e' : '#334155', flexShrink: 0 }}>{item.icon}</span>
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px', background: view === item.id ? 'rgba(34,197,94,0.08)' : 'transparent', border: 'none', borderLeft: view === item.id ? '2px solid #22c55e' : '2px solid transparent', color: view === item.id ? '#22c55e' : '#cbd5e1', cursor: 'pointer', fontSize: 11, fontFamily: 'IBM Plex Mono, monospace', transition: 'all 0.15s', textAlign: 'left' }}>
+                  <span style={{ color: view === item.id ? '#22c55e' : '#94a3b8', flexShrink: 0 }}>{item.icon}</span>
                   <span style={{ flex: 1 }}>{item.label}</span>
                   {item.id === 'alerts' && firedAlerts > 0 && <span style={{ background: '#dc2626', color: '#fff', fontSize: 9, padding: '1px 5px', borderRadius: 2 }}>{firedAlerts}</span>}
                 </button>
@@ -112,7 +113,7 @@ function Layout() {
             <span style={{ width: 5, height: 5, background: '#22c55e', borderRadius: '50%', display: 'inline-block', animation: 'pulse 2s infinite' }}></span>
             CLUSTER LIVE
           </div>
-          <div style={{ fontSize: 10, color: '#334155', padding: '3px 8px', border: '1px solid #1e2a3a' }}>caiman-cluster</div>
+          <ClusterSwitcher onClusterChange={(c) => console.log('cluster:', c?.name)} />
         </div>
 
         {/* View */}
