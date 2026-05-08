@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Caimán OS Scripts — Community Installer Library</title>
+<meta name="description" content="25+ one-command installers for your Caimán OS hypervisor. Deploy PostgreSQL, Nginx, Jellyfin, Home Assistant and more in seconds.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --g:  #22c55e; --g2: #16a34a; --g3: #86efac;
+  --bg: #0a0e1a; --bg2: #0d1220; --bg3: #111827;
+  --brd: #1e2a3a; --brd2: #2d3f55;
+  --txt: #e2e8f0; --dim: #64748b; --muted: #334155;
+  --red: #f87171; --amb: #fbbf24; --blu: #60a5fa; --pur: #a78bfa;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--txt);font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.6;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(34,197,94,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(34,197,94,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
+
+nav{position:fixed;top:0;left:0;right:0;z-index:100;height:52px;background:rgba(10,14,26,0.96);backdrop-filter:blur(12px);border-bottom:1px solid var(--brd);display:flex;align-items:center;padding:0 40px;gap:16px}
+.nav-logo{display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--g);font-family:'Syne',sans-serif;font-weight:800;font-size:14px;letter-spacing:0.05em}
+.nav-logo svg{width:22px;height:22px}
+.nav-links{display:flex;gap:24px;list-style:none;margin-left:auto}
+.nav-links a{color:var(--dim);text-decoration:none;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;transition:color 0.15s}
+.nav-links a:hover{color:var(--g)}
+
+.hero{position:relative;z-index:1;padding:120px 40px 80px;text-align:center;max-width:900px;margin:0 auto}
+.hero-tag{display:inline-flex;align-items:center;gap:6px;padding:3px 12px;border:1px solid var(--g3);background:rgba(34,197,94,0.08);color:var(--g);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;border-radius:100px;margin-bottom:24px}
+.hero-tag::before{content:'';width:5px;height:5px;background:var(--g);border-radius:50%;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+h1{font-family:'Syne',sans-serif;font-size:52px;font-weight:800;line-height:1.05;color:#f1f5f9;letter-spacing:-0.02em;margin-bottom:20px}
+h1 span{color:var(--g)}
+.hero-sub{font-size:15px;color:var(--dim);line-height:1.7;max-width:560px;margin:0 auto 40px}
+.stats{display:flex;gap:32px;justify-content:center;margin-bottom:48px}
+.stat-val{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--g);display:block}
+.stat-lbl{font-size:10px;color:var(--dim);letter-spacing:0.08em;text-transform:uppercase}
+
+.search-wrap{max-width:480px;margin:0 auto 16px;position:relative}
+.search-input{width:100%;background:var(--bg2);border:1px solid var(--brd2);color:var(--txt);padding:10px 16px 10px 40px;font-family:'IBM Plex Mono',monospace;font-size:13px;outline:none;transition:border-color 0.2s}
+.search-input:focus{border-color:var(--g)}
+.search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--dim)}
+.filter-tabs{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:12px}
+.filter-tab{background:transparent;border:1px solid var(--brd);color:var(--dim);padding:4px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:all 0.15s}
+.filter-tab:hover,.filter-tab.active{color:var(--g);border-color:var(--g);background:rgba(34,197,94,0.08)}
+
+.main{position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:0 40px 80px}
+.category-section{margin-bottom:48px}
+.cat-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.cat-icon{font-size:18px}
+.cat-name{font-family:'Syne',sans-serif;font-weight:700;font-size:16px;color:#f1f5f9}
+.cat-count{font-size:10px;color:var(--dim);padding:2px 6px;border:1px solid var(--brd);letter-spacing:0.08em}
+.scripts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px}
+.script-card{background:var(--bg2);border:1px solid var(--brd);padding:16px;transition:border-color 0.2s;cursor:pointer;position:relative}
+.script-card:hover{border-color:var(--brd2)}
+.script-card.featured{border-color:rgba(34,197,94,0.3)}
+.card-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px}
+.card-name{font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:#f1f5f9}
+.card-port{font-size:10px;color:var(--g);padding:2px 6px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2)}
+.card-desc{font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.5}
+.card-specs{display:flex;gap:12px;font-size:10px;color:var(--muted);margin-bottom:12px}
+.card-cmd{background:var(--bg3);border:1px solid var(--brd);padding:8px 10px;font-size:11px;color:var(--g);cursor:pointer;transition:background 0.15s;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card-cmd:hover{background:rgba(34,197,94,0.05);border-color:var(--brd2)}
+.cmd-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.copy-btn{color:var(--dim);flex-shrink:0;font-size:12px;transition:color 0.15s}
+.card-cmd:hover .copy-btn{color:var(--g)}
+.card-tags{display:flex;gap:4px;flex-wrap:wrap}
+.tag{font-size:9px;padding:2px 5px;background:var(--bg3);color:var(--muted);border:1px solid var(--brd);letter-spacing:0.06em}
+.hidden{display:none}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity 0.2s}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{background:var(--bg2);border:1px solid var(--brd2);width:100%;max-width:560px;padding:28px;position:relative}
+.modal-close{position:absolute;top:16px;right:16px;background:transparent;border:1px solid var(--brd);color:var(--dim);width:28px;height:28px;cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:14px;display:flex;align-items:center;justify-content:center}
+.modal-title{font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:#f1f5f9;margin-bottom:4px}
+.modal-desc{font-size:12px;color:var(--dim);margin-bottom:20px}
+.modal-modes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px}
+.mode-card{background:var(--bg3);border:1px solid var(--brd);padding:14px;cursor:pointer;transition:border-color 0.15s}
+.mode-card:hover,.mode-card.selected{border-color:var(--g)}
+.mode-title{font-size:12px;color:#f1f5f9;font-weight:500;margin-bottom:4px}
+.mode-desc{font-size:10px;color:var(--dim)}
+.modal-cmd-box{background:var(--bg);border:1px solid var(--brd2);padding:14px 16px;margin-bottom:16px;font-size:12px;color:var(--g);cursor:pointer;transition:background 0.15s;word-break:break-all}
+.modal-cmd-box:hover{background:rgba(34,197,94,0.04)}
+.modal-footer{display:flex;align-items:center;gap:12px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;text-decoration:none;cursor:pointer;transition:all 0.15s;border:0;outline:0}
+.btn-primary{background:var(--g2);color:#fff}
+.btn-primary:hover{background:#15803d}
+.btn-ghost{background:transparent;color:var(--dim);border:1px solid var(--brd)}
+.btn-ghost:hover{color:var(--g);border-color:var(--brd2)}
+
+.toast{position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--brd2);padding:10px 16px;font-size:11px;color:var(--g);z-index:300;opacity:0;transform:translateY(8px);transition:all 0.25s;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}
+
+footer{position:relative;z-index:1;border-top:1px solid var(--brd);padding:32px 40px;display:flex;align-items:center;justify-content:space-between}
+.footer-logo{font-family:'Syne',sans-serif;font-weight:800;color:var(--g);font-size:14px}
+.footer-copy{font-size:11px;color:var(--dim)}
+
+@media(max-width:768px){h1{font-size:34px}.hero{padding:100px 20px 60px}.main{padding:0 20px 60px}nav{padding:0 20px}.scripts-grid{grid-template-columns:1fr}.modal-modes{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="https://caimanos.com" class="nav-logo">
+    <svg viewBox="0 0 24 24" fill="none">
+      <ellipse cx="12" cy="12" rx="10" ry="7" stroke="#22c55e" stroke-width="1.5"/>
+      <circle cx="8" cy="10.5" r="2" fill="#22c55e"/>
+      <circle cx="7.5" cy="10" r="0.8" fill="#0a0e1a"/>
+      <path d="M12 19C12 19 19 17 21 12" stroke="#22c55e" stroke-width="1.2" stroke-linecap="round"/>
+      <path d="M3 12C5 16 8 18 12 18" stroke="#22c55e" stroke-width="1.2" stroke-linecap="round"/>
+    </svg>
+    CAIMÁN SCRIPTS
+  </a>
+  <ul class="nav-links">
+    <li><a href="https://caimanos.com">Home</a></li>
+    <li><a href="https://github.com/teampmladv/caiman-os/tree/main/scripts" target="_blank">GitHub</a></li>
+    <li><a href="https://github.com/teampmladv/caiman-os/blob/main/scripts/CONTRIBUTING.md" target="_blank">Contribute</a></li>
+    <li><a href="https://ui.caimanos.com">Dashboard</a></li>
+  </ul>
+</nav>
+
+<section class="hero">
+  <div class="hero-tag">Community Script Library</div>
+  <h1>One command.<br><span>Any service.</span></h1>
+  <p class="hero-sub">25+ battle-tested scripts to deploy services on your Caimán OS hypervisor. Create a fresh VM or install in an existing one — your choice.</p>
+  <div class="stats">
+    <div><span class="stat-val" id="total-scripts">25</span><span class="stat-lbl">Scripts</span></div>
+    <div><span class="stat-val">8</span><span class="stat-lbl">Categories</span></div>
+    <div><span class="stat-val">2</span><span class="stat-lbl">Install modes</span></div>
+  </div>
+
+  <div class="search-wrap">
+    <span class="search-icon">⌕</span>
+    <input class="search-input" type="text" id="search" placeholder="Search scripts — nginx, postgres, jellyfin..." oninput="filterScripts(this.value)">
+  </div>
+  <div class="filter-tabs" id="filter-tabs">
+    <button class="filter-tab active" onclick="filterCategory('all', this)">All</button>
+  </div>
+</section>
+
+<main class="main" id="scripts-container"></main>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal" onclick="closeModal(event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div class="modal-title" id="modal-title"></div>
+    <div class="modal-desc" id="modal-desc"></div>
+    <div class="modal-modes">
+      <div class="mode-card selected" id="mode-existing" onclick="selectMode('existing')">
+        <div class="mode-title">Install in current system</div>
+        <div class="mode-desc">Run directly on the host or inside an existing VM</div>
+      </div>
+      <div class="mode-card" id="mode-new-vm" onclick="selectMode('new-vm')">
+        <div class="mode-title">Create new VM</div>
+        <div class="mode-desc">Spin up a fresh Caimán VM then install inside it</div>
+      </div>
+    </div>
+    <div class="modal-cmd-box" id="modal-cmd" onclick="copyModalCmd()"></div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="copyModalCmd()">Copy command</button>
+      <a href="#" class="btn btn-ghost" id="modal-github" target="_blank">View source</a>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<footer>
+  <div class="footer-logo">🐊 CAIMÁN OS</div>
+  <div class="footer-copy">Apache 2.0 · Named after the Cuban crocodile · <a href="https://github.com/teampmladv/caiman-os" style="color:var(--g);text-decoration:none">github.com/teampmladv/caiman-os</a></div>
+</footer>
+
+<script>
+const BASE = 'https://scripts.caimanos.com';
+const GH = 'https://github.com/teampmladv/caiman-os/blob/main/scripts';
+
+const CATALOG = {
+  categories: [
+    { id:'db', name:'Databases', icon:'🗄', scripts:[
+      {id:'postgresql',name:'PostgreSQL',desc:'Production SQL database',port:5432,cpus:2,mem:1024,tags:['sql','database']},
+      {id:'mysql',name:'MySQL',desc:'MySQL relational database',port:3306,cpus:2,mem:1024,tags:['sql','database']},
+      {id:'redis',name:'Redis',desc:'In-memory data store and cache',port:6379,cpus:1,mem:512,tags:['cache','nosql']},
+      {id:'mongodb',name:'MongoDB',desc:'NoSQL document database',port:27017,cpus:2,mem:2048,tags:['nosql','document']},
+    ]},
+    { id:'web', name:'Web Servers', icon:'🌐', scripts:[
+      {id:'nginx',name:'Nginx',desc:'High-performance web server',port:80,cpus:1,mem:512,tags:['web','proxy']},
+      {id:'caddy',name:'Caddy',desc:'Automatic HTTPS web server',port:80,cpus:1,mem:512,tags:['web','https']},
+      {id:'apache',name:'Apache',desc:'Apache HTTP server',port:80,cpus:1,mem:512,tags:['web','classic']},
+    ]},
+    { id:'monitoring', name:'Monitoring', icon:'📊', scripts:[
+      {id:'prometheus',name:'Prometheus',desc:'Metrics collection and alerting',port:9090,cpus:2,mem:1024,tags:['metrics','alerting']},
+      {id:'grafana',name:'Grafana',desc:'Metrics visualization dashboards',port:3000,cpus:2,mem:1024,tags:['dashboards','metrics']},
+      {id:'uptime-kuma',name:'Uptime Kuma',desc:'Self-hosted uptime monitoring',port:3001,cpus:1,mem:512,tags:['uptime','status']},
+    ]},
+    { id:'media', name:'Media', icon:'🎬', scripts:[
+      {id:'jellyfin',name:'Jellyfin',desc:'Free media server and streaming',port:8096,cpus:4,mem:4096,tags:['media','streaming']},
+      {id:'nextcloud',name:'Nextcloud',desc:'Self-hosted file collaboration',port:80,cpus:4,mem:4096,tags:['files','storage']},
+      {id:'plex',name:'Plex',desc:'Plex media server',port:32400,cpus:4,mem:4096,tags:['media','streaming']},
+    ]},
+    { id:'security', name:'Security', icon:'🔒', scripts:[
+      {id:'wireguard',name:'WireGuard',desc:'Fast modern VPN',port:51820,cpus:1,mem:256,tags:['vpn','network']},
+      {id:'adguard',name:'AdGuard Home',desc:'Network-wide ad blocker',port:3000,cpus:1,mem:512,tags:['dns','privacy']},
+      {id:'fail2ban',name:'Fail2ban',desc:'Intrusion prevention system',port:null,cpus:1,mem:256,tags:['security','firewall']},
+    ]},
+    { id:'devops', name:'DevOps', icon:'⚙️', scripts:[
+      {id:'gitea',name:'Gitea',desc:'Lightweight self-hosted Git',port:3000,cpus:2,mem:1024,tags:['git','vcs']},
+      {id:'docker',name:'Docker',desc:'Container runtime',port:null,cpus:2,mem:1024,tags:['containers']},
+      {id:'jenkins',name:'Jenkins',desc:'CI/CD automation server',port:8080,cpus:4,mem:2048,tags:['ci','cd']},
+      {id:'harbor',name:'Harbor',desc:'Enterprise container registry',port:80,cpus:4,mem:4096,tags:['registry','containers']},
+    ]},
+    { id:'home', name:'Home Automation', icon:'🏠', scripts:[
+      {id:'homeassistant',name:'Home Assistant',desc:'Open source home automation',port:8123,cpus:2,mem:2048,tags:['homelab','iot']},
+      {id:'nodered',name:'Node-RED',desc:'Low-code event-driven automation',port:1880,cpus:1,mem:512,tags:['automation','iot']},
+    ]},
+    { id:'productivity', name:'Productivity', icon:'📝', scripts:[
+      {id:'vaultwarden',name:'Vaultwarden',desc:'Bitwarden-compatible password manager',port:8080,cpus:1,mem:512,tags:['passwords','security']},
+      {id:'paperless',name:'Paperless-ngx',desc:'Document management with OCR',port:8000,cpus:4,mem:4096,tags:['documents','ocr']},
+      {id:'immich',name:'Immich',desc:'Self-hosted photo and video backup',port:2283,cpus:4,mem:4096,tags:['photos','backup']},
+    ]},
+  ]
+};
+
+let activeCategory = 'all';
+let activeSearch = '';
+let modalScript = null;
+let modalMode = 'existing';
+
+// Build filter tabs
+const tabsEl = document.getElementById('filter-tabs');
+CATALOG.categories.forEach(cat => {
+  const btn = document.createElement('button');
+  btn.className = 'filter-tab';
+  btn.textContent = cat.icon + ' ' + cat.name;
+  btn.onclick = () => filterCategory(cat.id, btn);
+  tabsEl.appendChild(btn);
+});
+
+function filterCategory(id, btn) {
+  activeCategory = id;
+  document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderScripts();
+}
+
+function filterScripts(q) {
+  activeSearch = q.toLowerCase();
+  renderScripts();
+}
+
+function renderScripts() {
+  const container = document.getElementById('scripts-container');
+  container.innerHTML = '';
+  let total = 0;
+
+  CATALOG.categories.forEach(cat => {
+    if (activeCategory !== 'all' && cat.id !== activeCategory) return;
+    const filtered = cat.scripts.filter(s => {
+      if (!activeSearch) return true;
+      return s.name.toLowerCase().includes(activeSearch) ||
+        s.desc.toLowerCase().includes(activeSearch) ||
+        s.tags.some(t => t.includes(activeSearch));
+    });
+    if (!filtered.length) return;
+    total += filtered.length;
+
+    const sec = document.createElement('div');
+    sec.className = 'category-section';
+    sec.innerHTML = `<div class="cat-header"><span class="cat-icon">${cat.icon}</span><span class="cat-name">${cat.name}</span><span class="cat-count">${filtered.length}</span></div>`;
+    const grid = document.createElement('div');
+    grid.className = 'scripts-grid';
+
+    filtered.forEach(s => {
+      const cmd = `bash <(curl -fsSL ${BASE}/${cat.id}/${s.id}.sh)`;
+      const card = document.createElement('div');
+      card.className = 'script-card';
+      card.innerHTML = `
+        <div class="card-top">
+          <div class="card-name">${s.name}</div>
+          ${s.port ? `<span class="card-port">:${s.port}</span>` : '<span class="card-port" style="color:var(--dim)">no port</span>'}
+        </div>
+        <div class="card-desc">${s.desc}</div>
+        <div class="card-specs"><span>${s.cpus}vCPU</span><span>${s.mem >= 1024 ? s.mem/1024+'GiB' : s.mem+'MiB'} RAM</span></div>
+        <div class="card-cmd" onclick="copyCmd('${cmd}',event)">
+          <span class="cmd-text">${cmd}</span>
+          <span class="copy-btn">⎘</span>
+        </div>
+        <div class="card-tags" style="margin-top:8px">${s.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>`;
+      card.addEventListener('click', e => {
+        if (e.target.classList.contains('card-cmd') || e.target.closest('.card-cmd')) return;
+        openModal(s, cat.id);
+      });
+      grid.appendChild(card);
+    });
+
+    sec.appendChild(grid);
+    container.appendChild(sec);
+  });
+
+  document.getElementById('total-scripts').textContent = total;
+}
+
+function copyCmd(cmd, e) {
+  e?.stopPropagation();
+  navigator.clipboard?.writeText(cmd).then(() => toast('Copied!'));
+}
+
+function openModal(s, catId) {
+  modalScript = { ...s, catId };
+  modalMode = 'existing';
+  document.getElementById('modal-title').textContent = s.name;
+  document.getElementById('modal-desc').textContent = s.desc;
+  document.getElementById('modal-github').href = `${GH}/${catId}/${s.id}.sh`;
+  selectMode('existing');
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal(e) {
+  if (!e || e.target === document.getElementById('modal')) {
+    document.getElementById('modal').classList.remove('open');
+  }
+}
+
+function selectMode(mode) {
+  modalMode = mode;
+  document.getElementById('mode-existing').classList.toggle('selected', mode === 'existing');
+  document.getElementById('mode-new-vm').classList.toggle('selected', mode === 'new-vm');
+  if (!modalScript) return;
+  const base = `bash <(curl -fsSL ${BASE}/${modalScript.catId}/${modalScript.id}.sh)`;
+  const cmd = mode === 'new-vm' ? `${base} --new-vm --name ${modalScript.id}-01` : base;
+  document.getElementById('modal-cmd').textContent = cmd;
+}
+
+function copyModalCmd() {
+  const cmd = document.getElementById('modal-cmd').textContent;
+  navigator.clipboard?.writeText(cmd).then(() => toast('Copied to clipboard!'));
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+renderScripts();
+</script>
+</body>
+</html>
