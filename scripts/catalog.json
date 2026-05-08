@@ -1,0 +1,384 @@
+{
+  "version": "1.0.0",
+  "updated": "2026-05-07",
+  "base_url": "https://scripts.caimanos.com",
+  "categories": [
+    {
+      "id": "db",
+      "name": "Databases",
+      "icon": "\ud83d\uddc4",
+      "scripts": [
+        {
+          "id": "postgresql",
+          "name": "PostgreSQL",
+          "desc": "Production SQL database",
+          "port": 5432,
+          "cpus": 2,
+          "mem": 1024,
+          "tags": [
+            "sql",
+            "database",
+            "production"
+          ]
+        },
+        {
+          "id": "mysql",
+          "name": "MySQL",
+          "desc": "MySQL relational database",
+          "port": 3306,
+          "cpus": 2,
+          "mem": 1024,
+          "tags": [
+            "sql",
+            "database"
+          ]
+        },
+        {
+          "id": "redis",
+          "name": "Redis",
+          "desc": "In-memory data store and cache",
+          "port": 6379,
+          "cpus": 1,
+          "mem": 512,
+          "tags": [
+            "cache",
+            "nosql",
+            "fast"
+          ]
+        },
+        {
+          "id": "mongodb",
+          "name": "MongoDB",
+          "desc": "NoSQL document database",
+          "port": 27017,
+          "cpus": 2,
+          "mem": 2048,
+          "tags": [
+            "nosql",
+            "document"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "web",
+      "name": "Web Servers",
+      "icon": "\ud83c\udf10",
+      "scripts": [
+        {
+          "id": "nginx",
+          "name": "Nginx",
+          "desc": "High-performance web server",
+          "port": 80,
+          "cpus": 1,
+          "mem": 512,
+          "tags": [
+            "web",
+            "proxy",
+            "reverse-proxy"
+          ]
+        },
+        {
+          "id": "caddy",
+          "name": "Caddy",
+          "desc": "Automatic HTTPS web server",
+          "port": 80,
+          "cpus": 1,
+          "mem": 512,
+          "tags": [
+            "web",
+            "https",
+            "automatic-tls"
+          ]
+        },
+        {
+          "id": "apache",
+          "name": "Apache",
+          "desc": "Apache HTTP server",
+          "port": 80,
+          "cpus": 1,
+          "mem": 512,
+          "tags": [
+            "web",
+            "classic"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "monitoring",
+      "name": "Monitoring",
+      "icon": "\ud83d\udcca",
+      "scripts": [
+        {
+          "id": "prometheus",
+          "name": "Prometheus",
+          "desc": "Metrics collection and alerting",
+          "port": 9090,
+          "cpus": 2,
+          "mem": 1024,
+          "tags": [
+            "metrics",
+            "alerting",
+            "observability"
+          ]
+        },
+        {
+          "id": "grafana",
+          "name": "Grafana",
+          "desc": "Metrics visualization dashboards",
+          "port": 3000,
+          "cpus": 2,
+          "mem": 1024,
+          "tags": [
+            "dashboards",
+            "visualization",
+            "metrics"
+          ]
+        },
+        {
+          "id": "uptime-kuma",
+          "name": "Uptime Kuma",
+          "desc": "Self-hosted uptime monitoring",
+          "port": 3001,
+          "cpus": 1,
+          "mem": 512,
+          "tags": [
+            "uptime",
+            "monitoring",
+            "status"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "media",
+      "name": "Media",
+      "icon": "\ud83c\udfac",
+      "scripts": [
+        {
+          "id": "jellyfin",
+          "name": "Jellyfin",
+          "desc": "Free media server and streaming",
+          "port": 8096,
+          "cpus": 4,
+          "mem": 4096,
+          "tags": [
+            "media",
+            "streaming",
+            "free"
+          ]
+        },
+        {
+          "id": "nextcloud",
+          "name": "Nextcloud",
+          "desc": "Self-hosted file collaboration",
+          "port": 80,
+          "cpus": 4,
+          "mem": 4096,
+          "tags": [
+            "files",
+            "collaboration",
+            "storage"
+          ]
+        },
+        {
+          "id": "plex",
+          "name": "Plex",
+          "desc": "Plex media server",
+          "port": 32400,
+          "cpus": 4,
+          "mem": 4096,
+          "tags": [
+            "media",
+            "streaming",
+            "plex"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "security",
+      "name": "Security",
+      "icon": "\ud83d\udd12",
+      "scripts": [
+        {
+          "id": "wireguard",
+          "name": "WireGuard",
+          "desc": "Fast modern VPN",
+          "port": 51820,
+          "cpus": 1,
+          "mem": 256,
+          "tags": [
+            "vpn",
+            "security",
+            "network"
+          ]
+        },
+        {
+          "id": "adguard",
+          "name": "AdGuard Home",
+          "desc": "Network-wide ad blocker",
+          "port": 3000,
+          "cpus": 1,
+          "mem": 512,
+          "tags": [
+            "dns",
+            "adblock",
+            "privacy"
+          ]
+        },
+        {
+          "id": "fail2ban",
+          "name": "Fail2ban",
+          "desc": "Intrusion prevention system",
+          "port": null,
+          "cpus": 1,
+          "mem": 256,
+          "tags": [
+            "security",
+            "firewall",
+            "ssh"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "devops",
+      "name": "DevOps",
+      "icon": "\u2699\ufe0f",
+      "scripts": [
+        {
+          "id": "gitea",
+          "name": "Gitea",
+          "desc": "Lightweight self-hosted Git service",
+          "port": 3000,
+          "cpus": 2,
+          "mem": 1024,
+          "tags": [
+            "git",
+            "vcs",
+            "devops"
+          ]
+        },
+        {
+          "id": "docker",
+          "name": "Docker",
+          "desc": "Container runtime",
+          "port": null,
+          "cpus": 2,
+          "mem": 1024,
+          "tags": [
+            "containers",
+            "runtime"
+          ]
+        },
+        {
+          "id": "jenkins",
+          "name": "Jenkins",
+          "desc": "CI/CD automation server",
+          "port": 8080,
+          "cpus": 4,
+          "mem": 2048,
+          "tags": [
+            "ci",
+            "cd",
+            "automation"
+          ]
+        },
+        {
+          "id": "harbor",
+          "name": "Harbor",
+          "desc": "Enterprise container registry",
+          "port": 80,
+          "cpus": 4,
+          "mem": 4096,
+          "tags": [
+            "registry",
+            "containers",
+            "enterprise"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "home",
+      "name": "Home Automation",
+      "icon": "\ud83c\udfe0",
+      "scripts": [
+        {
+          "id": "homeassistant",
+          "name": "Home Assistant",
+          "desc": "Open source home automation",
+          "port": 8123,
+          "cpus": 2,
+          "mem": 2048,
+          "tags": [
+            "homelab",
+            "automation",
+            "iot"
+          ]
+        },
+        {
+          "id": "nodered",
+          "name": "Node-RED",
+          "desc": "Low-code event-driven automation",
+          "port": 1880,
+          "cpus": 1,
+          "mem": 512,
+          "tags": [
+            "automation",
+            "flows",
+            "iot"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "productivity",
+      "name": "Productivity",
+      "icon": "\ud83d\udcdd",
+      "scripts": [
+        {
+          "id": "vaultwarden",
+          "name": "Vaultwarden",
+          "desc": "Bitwarden-compatible password manager",
+          "port": 8080,
+          "cpus": 1,
+          "mem": 512,
+          "tags": [
+            "passwords",
+            "security",
+            "bitwarden"
+          ]
+        },
+        {
+          "id": "paperless",
+          "name": "Paperless-ngx",
+          "desc": "Document management with OCR",
+          "port": 8000,
+          "cpus": 4,
+          "mem": 4096,
+          "tags": [
+            "documents",
+            "ocr",
+            "paperless"
+          ]
+        },
+        {
+          "id": "immich",
+          "name": "Immich",
+          "desc": "Self-hosted photo and video backup",
+          "port": 2283,
+          "cpus": 4,
+          "mem": 4096,
+          "tags": [
+            "photos",
+            "backup",
+            "media"
+          ]
+        }
+      ]
+    }
+  ]
+}

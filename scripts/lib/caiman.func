@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+# ============================================================
+#  Caimán OS — Shared Script Library
+#  source this file in every script:
+#    source <(curl -fsSL https://scripts.caimanos.com/lib/caiman.func)
+# ============================================================
+
+CAIMAN_VERSION="1.0.3"
+CAIMAN_API="${CAIMAN_API:-http://localhost:8765}"
+CAIMAN_KERNEL="${CAIMAN_KERNEL:-/var/lib/caiman/kernels/vmlinuz}"
+CAIMAN_SCRIPTS_BASE="https://scripts.caimanos.com"
+
+# ── Colors ───────────────────────────────────────────────────
+BLD='\e[1m'
+RED='\e[91m'
+GRN='\e[92m'
+YLW='\e[93m'
+BLU='\e[94m'
+PUR='\e[95m'
+CYN='\e[96m'
+DIM='\e[2m'
+CLR='\e[0m'
+
+# ── Logging ───────────────────────────────────────────────────
+msg()  { echo -e "${GRN}  ✓${CLR}  $*"; }
+info() { echo -e "${BLU}  ↳${CLR}  $*"; }
+warn() { echo -e "${YLW}  ⚠${CLR}  $*"; }
+err()  { echo -e "${RED}  ✗${CLR}  $*" >&2; }
+die()  { err "$*"; exit 1; }
+
+header() {
+  echo
+  echo -e "${GRN}${BLD}  🐊  Caimán OS Script Installer${CLR}"
+  echo -e "${DIM}  ─────────────────────────────────────────${CLR}"
+  echo -e "  ${BLD}$1${CLR}  ${DIM}· scripts.caimanos.com${CLR}"
+  echo -e "${DIM}  ─────────────────────────────────────────${CLR}"
+  echo
+}
+
+# ── Checks ────────────────────────────────────────────────────
+check_root() {
+  [[ $EUID -eq 0 ]] || die "Run as root: sudo bash script.sh"
+}
+
+check_api() {
+  if ! curl -fsSL "$CAIMAN_API/health" &>/dev/null; then
+    warn "caiman-api not reachable at $CAIMAN_API"
+    warn "Running in standalone mode (no VM creation)"
+    STANDALONE=true
+  else
+    STANDALONE=false
+    API_VERSION=$(curl -fsSL "$CAIMAN_API/health" | grep -o '"version":"[^"]*"' | cut -d'"' -f4)
+    info "caiman-api $API_VERSION detected"
+  fi
+}
+
+check_dep() {
+  command -v "$1" &>/dev/null || die "Missing dependency: $1 — install it first"
+}
+
+# ── VM Management ─────────────────────────────────────────────
+create_vm() {
+  local name="$1" cpus="${2:-2}" mem="${3:-1024}"
+  info "Creating VM: $name (${cpus}vCPU, ${mem}MiB)"
+  local resp
+  resp=$(curl -fsSL -X POST "$CAIMAN_API/api/vms" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\":\"$name\",\"cpus\":$cpus,\"memMib\":$mem,\"kernel\":\"$CAIMAN_KERNEL\"}" 2>&1)
+  VM_ID=$(echo "$resp" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+  [[ -n "$VM_ID" ]] || die "Failed to create VM: $resp"
+  msg "VM created: $VM_ID"
+  echo "$VM_ID"
+}
+
+wait_vm_running() {
+  local id="$1" max="${2:-30}" i=0
+  info "Waiting for VM to boot..."
+  while [[ $i -lt $max ]]; do
+    local status
+    status=$(curl -fsSL "$CAIMAN_API/api/vms/$id" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+    [[ "$status" == "RUNNING" ]] && { msg "VM is running"; return 0; }
+    sleep 1; ((i++))
+  done
+  die "VM did not start within ${max}s"
+}
+
+vm_exec() {
+  local id="$1"; shift
+  # Execute command in VM via console WebSocket (requires wscat)
+  if command -v wscat &>/dev/null; then
+    echo "$*" | wscat -c "ws://localhost:8765/api/vms/$id/console/ws" 2>/dev/null
+  else
+    warn "wscat not found — run command manually in VM console: $*"
+  fi
+}
+
+# ── Install mode ──────────────────────────────────────────────
+#  --new-vm   : create a new VM and install inside
+#  --existing : install in current system (no VM)
+parse_mode() {
+  MODE="existing"
+  VM_NAME=""
+  VM_CPUS=2
+  VM_MEM=1024
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --new-vm)     MODE="new-vm" ;;
+      --existing)   MODE="existing" ;;
+      --name)       VM_NAME="$2"; shift ;;
+      --cpus)       VM_CPUS="$2"; shift ;;
+      --mem)        VM_MEM="$2"; shift ;;
+      --api)        CAIMAN_API="$2"; shift ;;
+      -h|--help)    show_help; exit 0 ;;
+    esac
+    shift
+  done
+}
+
+# ── System helpers ────────────────────────────────────────────
+detect_os() {
+  if [[ -f /etc/os-release ]]; then
+    . /etc/os-release
+    OS_ID="$ID"
+    OS_VERSION="$VERSION_ID"
+    OS_NAME="$PRETTY_NAME"
+  else
+    die "Cannot detect OS"
+  fi
+}
+
+pkg_install() {
+  case "$OS_ID" in
+    ubuntu|debian) apt-get install -y -qq "$@" ;;
+    centos|rhel|rocky|almalinux) dnf install -y -q "$@" ;;
+    alpine) apk add --no-cache "$@" ;;
+    *) die "Unsupported OS: $OS_ID" ;;
+  esac
+}
+
+pkg_update() {
+  case "$OS_ID" in
+    ubuntu|debian) apt-get update -qq ;;
+    centos|rhel|rocky|almalinux) dnf check-update -q || true ;;
+    alpine) apk update -q ;;
+  esac
+}
+
+service_enable() { systemctl enable --now "$1" 2>/dev/null || rc-update add "$1" default 2>/dev/null || true; }
+service_restart() { systemctl restart "$1" 2>/dev/null || rc-service "$1" restart 2>/dev/null || true; }
+
+# ── Network helpers ───────────────────────────────────────────
+get_ip() { hostname -I 2>/dev/null | awk '{print $1}' || ip route get 1 | awk '{print $7}'; }
+
+open_port() {
+  local port="$1" proto="${2:-tcp}"
+  if command -v ufw &>/dev/null; then
+    ufw allow "$port/$proto" &>/dev/null || true
+  elif command -v firewall-cmd &>/dev/null; then
+    firewall-cmd --permanent --add-port="$port/$proto" &>/dev/null || true
+    firewall-cmd --reload &>/dev/null || true
+  fi
+}
+
+# ── Print success banner ──────────────────────────────────────
+success() {
+  local service="$1" port="$2" extra="${3:-}"
+  local ip; ip=$(get_ip)
+  echo
+  echo -e "${GRN}${BLD}  ════════════════════════════════════${CLR}"
+  echo -e "${GRN}${BLD}   $service installed successfully!${CLR}"
+  echo -e "${GRN}${BLD}  ════════════════════════════════════${CLR}"
+  echo
+  [[ -n "$port" ]] && echo -e "  ${BLD}URL:${CLR}   http://${ip}:${port}"
+  [[ -n "$extra" ]] && echo -e "$extra"
+  echo
+  echo -e "  ${DIM}Managed by Caimán OS · scripts.caimanos.com${CLR}"
+  echo
+}
