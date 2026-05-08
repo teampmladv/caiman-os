@@ -15,7 +15,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use anyhow::{Context, Result};
 use tracing::info;
 
-const TUNSETIFF:  u64 = 0x400454CA;
+const TUNSETIFF: libc::c_ulong = 0x400454CA;
 const IFF_TAP:    i16 = 0x0002;
 const IFF_NO_PI:  i16 = 0x1000;
 
