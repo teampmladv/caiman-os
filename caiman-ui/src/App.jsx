@@ -14,6 +14,7 @@ import GPU from './views/GPU.jsx'
 import Storage from './views/Storage.jsx'
 import Network from './views/Network.jsx'
 import Logs from './views/Logs.jsx'
+import Import from './views/Import.jsx'
 import ClusterView from './views/ClusterView.jsx'
 import ClusterSidebarList from './components/clusters/ClusterSidebarList.jsx'
 import { getActiveCluster } from './components/clusters/ClusterStore.js'
@@ -33,6 +34,7 @@ const NAV = [
   { id: 'billing',   label: 'Billing', group: 'admin', icon: <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" width="18" height="18"><rect x="2" y="4" width="16" height="12" rx="2"/><path d="M2 8h16M6 12h2M10 12h4"/></svg> },
   { id: 'tenants',   label: 'Tenants / Roles', group: 'admin', icon: <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" width="18" height="18"><circle cx="7" cy="6" r="3"/><circle cx="14" cy="8" r="2.5"/><path d="M1 17c0-3.31 2.69-6 6-6s6 2.69 6 6"/><path d="M16 13c1.66 0 3 1.34 3 3"/></svg> },
   { id: 'apikeys',   label: 'API Keys', group: 'admin', icon: <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" width="18" height="18"><circle cx="7.5" cy="10" r="4.5"/><path d="M12 7.5l6 6M16 7.5l2 2"/></svg> },
+  { id: 'import',    label: 'Import & Migrate', group: 'admin', icon: <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" width="18" height="18"><path d="M10 2v12M6 10l4 4 4-4"/><path d="M3 16h14"/></svg> },
   { id: 'logs',      label: 'Live Logs', group: 'admin', icon: <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" width="18" height="18"><path d="M4 5h12M4 9h8M4 13h6M4 17h10"/></svg> },
 ]
 
@@ -44,7 +46,7 @@ const GROUPS = {
   admin:    'ADMINISTRATION',
 }
 
-const VIEWS = { cluster: ClusterView, dashboard: Dashboard, vms: VMs, topo: Topology, console: Console, snapshots: Snapshots, storage: Storage, network: Network, gpu: GPU, drs: DRS, alerts: Alerts, backup: Backup, billing: Billing, tenants: Tenants, apikeys: APIKeys, logs: Logs }
+const VIEWS = { cluster: ClusterView, import: Import, dashboard: Dashboard, vms: VMs, topo: Topology, console: Console, snapshots: Snapshots, storage: Storage, network: Network, gpu: GPU, drs: DRS, alerts: Alerts, backup: Backup, billing: Billing, tenants: Tenants, apikeys: APIKeys, logs: Logs }
 
 function Layout() {
   const { view, setView, toast, vms, alerts } = useApp()

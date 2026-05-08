@@ -22,6 +22,7 @@ use tower_http::cors::CorsLayer;
 use tracing::info;
 
 mod auth;
+mod import;
 mod vm;
 mod node;
 mod demo;
@@ -265,6 +266,8 @@ async fn main() {
             .route("/api/nodes",                      get(demo_nodes))
             .route("/api/cluster",                    get(demo_cluster))
             .route("/api/drs/recommendations",        get(drs))
+            .route("/api/import/discover",                post(import::discover))
+            .route("/api/import/vm",                      post(import::import_vm))
             .layer(middleware::from_fn(auth::require_auth))
             .with_state(store);
 
@@ -293,6 +296,8 @@ async fn main() {
             .route("/api/nodes",                      get(get_nodes_real))
             .route("/api/cluster",                    get(get_cluster_real))
             .route("/api/drs/recommendations",        get(drs))
+            .route("/api/import/discover",                post(import::discover))
+            .route("/api/import/vm",                      post(import::import_vm))
             .layer(middleware::from_fn(auth::require_auth));
 
         let app = Router::new()
