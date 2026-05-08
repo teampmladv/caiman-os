@@ -1,15 +1,27 @@
-//! caiman-api v0.7.0 — REST API (production + Railway demo mode)
+//! caiman-api v1.1.0 -- REST API (production + Railway demo mode)
 //!
-//! DEMO_MODE=true → in-memory simulation, no KVM required (Railway)
-//! DEMO_MODE=false → real VMs via caiman-vmm (bare metal)
+//! DEMO_MODE=true  -> in-memory simulation, no KVM required (Railway)
+//! DEMO_MODE=false -> real VMs via caiman-vmm (bare metal)
+//!
+//! Auth: JWT via CAIMAN_JWT_SECRET env var
+//!   Public:    GET /health, POST /auth/bootstrap
+//!   Protected: POST /auth/token  (admin only), all /api/*
 
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
-use axum::{Router, routing::{get, post, delete}, extract::{Path, Json, State, WebSocketUpgrade}, http::StatusCode, response::IntoResponse};
+use axum::{
+    Router,
+    routing::{get, post, delete},
+    extract::{Path, Json, State, WebSocketUpgrade},
+    http::StatusCode,
+    response::IntoResponse,
+    middleware,
+};
 use serde_json::{json, Value};
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
+mod auth;
 mod vm;
 mod node;
 mod demo;
@@ -31,7 +43,7 @@ fn ok(v: impl serde::Serialize) -> Json<Value> {
     Json(serde_json::to_value(v).unwrap_or(json!({})))
 }
 
-// ── Demo mode handlers ────────────────────────────────────────────────────
+// - Demo mode handlers -
 
 async fn demo_create_vm(State(store): State<SharedDemo>, Json(req): Json<CreateVmRequest>)
     -> impl IntoResponse
@@ -106,7 +118,7 @@ async fn demo_cluster(State(store): State<SharedDemo>) -> Json<Value> {
     }))
 }
 
-// ── Real mode handlers ────────────────────────────────────────────────────
+// - Real mode handlers -
 
 async fn create_vm(Json(req): Json<CreateVmRequest>) -> impl IntoResponse {
     let hostname = sysinfo::System::host_name().unwrap_or_else(|| "node".into());
@@ -179,8 +191,8 @@ async fn delete_vm_h(Path(id): Path<String>) -> impl IntoResponse {
 async fn vm_logs(Path(id): Path<String>) -> impl IntoResponse {
     let path = format!("/var/run/caiman/{id}.log");
     match std::fs::read_to_string(&path) {
-        Ok(c) => { let lines: Vec<&str> = c.lines().rev().take(200).collect(); ok(lines).into_response() }
-        Err(_)=> ok(Vec::<String>::new()).into_response(),
+        Ok(c)  => { let lines: Vec<&str> = c.lines().rev().take(200).collect(); ok(lines).into_response() }
+        Err(_) => ok(Vec::<String>::new()).into_response(),
     }
 }
 
@@ -221,7 +233,7 @@ async fn drs() -> Json<Value> {
     Json(json!({ "recommendations": [], "balanceSigma": 0.0 }))
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────
+// - Main -
 
 #[tokio::main]
 async fn main() {
@@ -230,15 +242,21 @@ async fn main() {
         .init();
 
     let demo_mode = is_demo();
-    info!("caiman-api v{} — demo_mode={}", env!("CARGO_PKG_VERSION"), demo_mode);
+    info!("caiman-api v{} -- demo_mode={}", env!("CARGO_PKG_VERSION"), demo_mode);
 
     let cors = CorsLayer::permissive();
     let addr: SocketAddr = "0.0.0.0:8765".parse().unwrap();
 
+    // - Public routes (no token needed) -
+    let public = Router::new()
+        .route("/health",          get(health))
+        .route("/auth/bootstrap",  post(auth::bootstrap_token));
+
     if demo_mode {
         let store: SharedDemo = Arc::new(RwLock::new(DemoStore::new()));
-        let app = Router::new()
-            .route("/health",                         get(health))
+
+        let protected = Router::new()
+            .route("/auth/token",                     post(auth::generate_token))
             .route("/api/vms",                        get(demo_list_vms).post(demo_create_vm))
             .route("/api/vms/:id",                    get(demo_get_vm).delete(demo_delete_vm))
             .route("/api/vms/:id/start",              post(demo_start_vm))
@@ -247,15 +265,23 @@ async fn main() {
             .route("/api/nodes",                      get(demo_nodes))
             .route("/api/cluster",                    get(demo_cluster))
             .route("/api/drs/recommendations",        get(drs))
-            .layer(cors)
+            .layer(middleware::from_fn(auth::require_auth))
             .with_state(store);
-        info!("DEMO MODE — listening on {addr}");
+
+        let app = Router::new()
+            .merge(public)
+            .merge(protected)
+            .layer(cors);
+
+        info!("DEMO MODE -- listening on {addr}");
         let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
         axum::serve(listener, app).await.unwrap();
+
     } else {
         let _ = std::fs::create_dir_all("/var/run/caiman");
-        let app = Router::new()
-            .route("/health",                         get(health))
+
+        let protected = Router::new()
+            .route("/auth/token",                     post(auth::generate_token))
             .route("/api/vms",                        get(list_vms).post(create_vm))
             .route("/api/vms/:id",                    get(get_vm).delete(delete_vm_h))
             .route("/api/vms/:id/start",              post(start_vm_h))
@@ -267,14 +293,20 @@ async fn main() {
             .route("/api/nodes",                      get(get_nodes_real))
             .route("/api/cluster",                    get(get_cluster_real))
             .route("/api/drs/recommendations",        get(drs))
+            .layer(middleware::from_fn(auth::require_auth));
+
+        let app = Router::new()
+            .merge(public)
+            .merge(protected)
             .layer(cors);
-        info!("PRODUCTION MODE — listening on {addr}");
+
+        info!("PRODUCTION MODE -- listening on {addr}");
         let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
         axum::serve(listener, app).await.unwrap();
     }
 }
 
-// ── WebSocket console handler ─────────────────────────────────────────────
+// - WebSocket console handler -
 async fn vm_console_ws(
     Path(id): Path<String>,
     ws: WebSocketUpgrade,
@@ -288,7 +320,6 @@ async fn handle_console(mut socket: axum::extract::ws::WebSocket, id: String) {
 
     let log_path = format!("/var/run/caiman/{id}.log");
 
-    // Send existing log first
     if let Ok(content) = std::fs::read_to_string(&log_path) {
         for line in content.lines() {
             if socket.send(Message::Text(line.to_string().into())).await.is_err() {
@@ -297,7 +328,6 @@ async fn handle_console(mut socket: axum::extract::ws::WebSocket, id: String) {
         }
     }
 
-    // Stream new lines as they arrive
     let Ok(file) = tokio::fs::File::open(&log_path).await else {
         let _ = socket.send(Message::Text("[console] Log not available".into())).await;
         return;
@@ -311,7 +341,6 @@ async fn handle_console(mut socket: axum::extract::ws::WebSocket, id: String) {
         match reader.read_line(&mut line).await {
             Ok(0) => {
                 tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                // Check for client disconnect
                 if socket.send(Message::Ping(vec![].into())).await.is_err() {
                     break;
                 }
