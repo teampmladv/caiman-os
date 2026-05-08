@@ -32,6 +32,7 @@ export async function probeCluster({ url, token }) {
   const res = await fetch(`${url}/health`, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(5000),
+    mode: 'cors',
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();

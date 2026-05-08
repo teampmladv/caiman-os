@@ -14,7 +14,9 @@ import GPU from './views/GPU.jsx'
 import Storage from './views/Storage.jsx'
 import Network from './views/Network.jsx'
 import Logs from './views/Logs.jsx'
-import ClusterSwitcher from './components/clusters/ClusterSwitcher.jsx'
+import ClusterView from './views/ClusterView.jsx'
+import ClusterSidebarList from './components/clusters/ClusterSidebarList.jsx'
+import { getActiveCluster } from './components/clusters/ClusterStore.js'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', group: 'overview',  icon: <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" width="18" height="18"><rect x="2" y="2" width="7" height="7" rx="1"/><rect x="11" y="2" width="7" height="7" rx="1"/><rect x="2" y="11" width="7" height="7" rx="1"/><rect x="11" y="11" width="7" height="7" rx="1"/></svg> },
@@ -42,7 +44,7 @@ const GROUPS = {
   admin:    'ADMINISTRATION',
 }
 
-const VIEWS = { dashboard: Dashboard, vms: VMs, topo: Topology, console: Console, snapshots: Snapshots, storage: Storage, network: Network, gpu: GPU, drs: DRS, alerts: Alerts, backup: Backup, billing: Billing, tenants: Tenants, apikeys: APIKeys, logs: Logs }
+const VIEWS = { cluster: ClusterView, dashboard: Dashboard, vms: VMs, topo: Topology, console: Console, snapshots: Snapshots, storage: Storage, network: Network, gpu: GPU, drs: DRS, alerts: Alerts, backup: Backup, billing: Billing, tenants: Tenants, apikeys: APIKeys, logs: Logs }
 
 function Layout() {
   const { view, setView, toast, vms, alerts } = useApp()
@@ -79,6 +81,12 @@ function Layout() {
         <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
           {Object.entries(groups).map(([group, items]) => (
             <div key={group}>
+              {group === 'compute' && (
+                <div style={{ borderTop:'1px solid #1e2a3a', borderBottom:'1px solid #1e2a3a', marginBottom:4 }}>
+                  <div style={{ fontSize:9, color:'#334155', letterSpacing:'0.14em', padding:'10px 16px 4px', fontWeight:500 }}>CLUSTERS</div>
+                  <ClusterSidebarList onSelect={() => setView('cluster')} />
+                </div>
+              )}
               <div style={{ fontSize: 9, color: '#334155', letterSpacing: '0.14em', padding: '10px 16px 4px', fontWeight: 500 }}>{GROUPS[group]}</div>
               {items.map(item => (
                 <button key={item.id} onClick={() => setView(item.id)}
@@ -91,7 +99,6 @@ function Layout() {
             </div>
           ))}
         </nav>
-
         {/* User */}
         <div style={{ padding: '12px 16px', borderTop: '1px solid #1e2a3a', display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#22c55e', fontWeight: 600 }}>OG</div>
@@ -113,7 +120,9 @@ function Layout() {
             <span style={{ width: 5, height: 5, background: '#22c55e', borderRadius: '50%', display: 'inline-block', animation: 'pulse 2s infinite' }}></span>
             CLUSTER LIVE
           </div>
-          <ClusterSwitcher onClusterChange={(c) => console.log('cluster:', c?.name)} />
+          <div style={{ fontSize: 10, color: '#475569', padding: '3px 8px', border: '1px solid #1e2a3a', fontFamily: 'IBM Plex Mono, monospace' }}>
+            {getActiveCluster()?.name || 'no cluster'}
+          </div>
         </div>
 
         {/* View */}
