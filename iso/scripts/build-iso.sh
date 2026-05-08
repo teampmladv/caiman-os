@@ -107,7 +107,7 @@ EOF
 chroot "$WORK_DIR/rootfs" /bin/sh << 'CHROOT'
 apk update --quiet
 apk add --quiet --no-cache \
-    busybox-initscripts \
+    busybox-openrc \
     openrc \
     bash \
     parted \
@@ -119,17 +119,12 @@ apk add --quiet --no-cache \
     dhcpcd \
     openssh \
     curl \
-    jq \
     iproute2 \
     iptables \
-    docker \
-    docker-compose \
     nginx \
-    ca-certificates \
-    dialog
+    ca-certificates
 
 # Enable services
-rc-update add docker default 2>/dev/null || true
 rc-update add nginx default 2>/dev/null || true
 rc-update add sshd default 2>/dev/null || true
 rc-update add dhcpcd default 2>/dev/null || true
@@ -189,7 +184,6 @@ output_log="/var/log/caiman-api.log"
 
 depend() {
     need net
-    after docker
 }
 EOF
 chmod +x "$WORK_DIR/rootfs/etc/init.d/caiman-api"
@@ -252,19 +246,19 @@ else
     ISOLINUX="boot/syslinux/isolinux.bin"
 fi
 
-cat > "$ISO_ROOT/boot/syslinux/isolinux.cfg" << SYSEOF
+cat > "$ISO_ROOT/boot/syslinux/isolinux.cfg" << 'SYSEOF'
 DEFAULT caiman
 LABEL caiman
-  MENU LABEL ^Install Caiman OS
+  MENU LABEL Install Caiman OS
   LINUX /boot/vmlinuz
   APPEND quiet console=ttyS0,115200 caiman.mode=install
   INITRD /boot/initramfs.img
 LABEL live
-  MENU LABEL ^Live (no install)
+  MENU LABEL Live (no install)
   LINUX /boot/vmlinuz
   APPEND quiet console=ttyS0,115200 caiman.mode=live
   INITRD /boot/initramfs.img
-SEOF
+SYSEOF
 
 # ── Build hybrid BIOS+UEFI ISO ─────────────────────────────────────────
 if [[ -f "$ISOHDPFX" ]]; then
