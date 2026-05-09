@@ -1,7 +1,7 @@
 [package]
 name        = "caiman-vmm"
 version     = "1.2.0"
-edition     = "2026"
+edition     = "2021"
 description = "Caimán OS — KVM VMM without QEMU"
 license     = "Apache-2.0"
 
