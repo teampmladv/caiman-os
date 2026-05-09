@@ -88,7 +88,7 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
     let id      = format!("vm-{}", &Uuid::new_v4().to_string()[..8]);
     let cpus    = req.cpus.unwrap_or(1);
     let mem_mib = req.mem_mib.unwrap_or(256);
-    let kernel  = req.kernel.clone().unwrap_or_else(|| "/boot/vmlinuz".into());
+    let kernel  = req.kernel.clone().unwrap_or_else(|| "/var/lib/caiman/kernels/vmlinuz".into());
     let uplink  = req.uplink.clone().unwrap_or_else(detect_uplink);
     let net_mode = req.net_mode.clone().unwrap_or_else(|| "nat".into());
 
