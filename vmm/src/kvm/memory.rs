@@ -40,6 +40,10 @@ pub struct GuestMemory {
 }
 
 impl GuestMemory {
+    pub fn size(&self) -> u64 {
+        self.regions.iter().map(|r| r.size as u64).sum()
+    }
+
     /// Allocate guest memory WITHOUT registering with any VM.
     pub fn alloc(mem_mib: u64, _track_dirty: bool) -> Result<Self> {
         let mut regions = Vec::new();

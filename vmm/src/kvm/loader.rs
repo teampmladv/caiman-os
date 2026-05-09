@@ -49,8 +49,7 @@ pub const CMDLINE_ADDR: u64 = 0x0002_0000;
 /// Tama?o maximo de la command line
 const CMDLINE_MAX: usize = 4096;
 
-/// Direccion del initrd (al final del primer GiB)
-const INITRD_ADDR: u64 = 0x3000_0000;
+/// Direccion del initrd -- calculada dinamicamente en load_bzimage
 
 // -- Estructuras del boot header -------------------------------------------
 
@@ -205,7 +204,8 @@ pub fn load_bzimage(
         } else {
             0x3800_0000  // 896 MiB default
         };
-        let addr = (std::cmp::min(INITRD_ADDR, max_addr) - size) & !0xFFF;
+        let mem_top = mem.size();
+        let addr = (std::cmp::min(std::cmp::min(mem_top, max_addr), mem_top) - size) & !0xFFF;
 
         info!("Copying initrd ({} KiB) to guest address {:#x}", size / 1024, addr);
         mem.write_slice(&initrd_data, addr)
