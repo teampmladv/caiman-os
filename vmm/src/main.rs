@@ -97,6 +97,7 @@ async fn run(args: Args) -> Result<()> {
     };
 
     let vnet_state = Arc::clone(&vnet.state);
+    let vblk_kick  = vblk.as_ref().and_then(|b| b.kickfd.try_clone().ok());
     let vblk_state = vblk.as_ref().map(|b| Arc::clone(&b.state));
 
     let handles: Vec<_> = (0..args.cpus)
@@ -104,8 +105,9 @@ async fn run(args: Args) -> Result<()> {
             let s  = Arc::clone(&serial);
             let vn = Arc::clone(&vnet_state);
             let vb = vblk_state.clone();
+            let kick = vblk_kick.as_ref().and_then(|k| k.try_clone().ok());
             kvm::vcpu::Vcpu::new(&vm, id as u64, &*mem, &load)
-                .map(|vcpu| vcpu.run(s, vn, vb))
+                .map(|vcpu| vcpu.run(s, vn, vb, kick))
         })
         .collect::<Result<_>>()?;
 

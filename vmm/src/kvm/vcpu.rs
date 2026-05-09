@@ -12,6 +12,7 @@ use kvm_bindings::{
     KVM_EXIT_SHUTDOWN, KVM_EXIT_SYSTEM_EVENT,
 };
 use kvm_ioctls::{VcpuFd, VmFd};
+use vmm_sys_util::eventfd::EventFd;
 use tracing::{debug, info, warn};
 
 use crate::device::serial::{Serial, SERIAL_BASE};
@@ -69,15 +70,15 @@ impl Vcpu {
         configure_sregs(&fd, mem)?;
         Ok(Self { id, fd, run })
     }
-    pub fn run(mut self, serial: Arc<Mutex<Serial>>, vnet: Arc<Mutex<NetState>>, vblk: Option<Arc<Mutex<BlkState>>>) -> JoinHandle<()> {
+    pub fn run(mut self, serial: Arc<Mutex<Serial>>, vnet: Arc<Mutex<NetState>>, vblk: Option<Arc<Mutex<BlkState>>>, blk_kick: Option<EventFd>) -> JoinHandle<()> {
         thread::Builder::new()
             .name(format!("vcpu-{}", self.id))
-            .spawn(move || run_loop(self.id, &mut self.fd, &self.run, serial, vnet, vblk))
+            .spawn(move || run_loop(self.id, &mut self.fd, &self.run, serial, vnet, vblk, blk_kick))
             .expect("spawning vCPU thread")
     }
 }
 
-fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>>, vnet: Arc<Mutex<NetState>>, vblk: Option<Arc<Mutex<BlkState>>>) {
+fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>>, vnet: Arc<Mutex<NetState>>, vblk: Option<Arc<Mutex<BlkState>>>, blk_kick: Option<EventFd>) {
     info!("vCPU {id} entering run loop");
     loop {
         match fd.run() {
@@ -86,7 +87,7 @@ fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>
                 match exit {
                     Io => handle_io(id, run, &serial),
                     MmioRead(addr, data) => handle_mmio_read(id, addr, data, &vnet, &vblk),
-                    MmioWrite(addr, data) => handle_mmio_write(id, addr, data, &serial, &vnet, &vblk),
+                    MmioWrite(addr, data) => handle_mmio_write(id, addr, data, &serial, &vnet, &vblk, &blk_kick),
                     Hlt => { debug!("vCPU {id}: HLT"); std::thread::sleep(std::time::Duration::from_micros(100)); }
                     Shutdown => { info!("vCPU {id}: SHUTDOWN"); break; }
                     SystemEvent(ev, _) => { info!("vCPU {id}: system event {ev:#x}"); break; }
@@ -150,7 +151,7 @@ fn handle_mmio_read(id: u64, addr: u64, data: &mut [u8], vnet: &Arc<Mutex<NetSta
     data.fill(0);
 }
 
-fn handle_mmio_write(id: u64, addr: u64, data: &[u8], serial: &Arc<Mutex<Serial>>, vnet: &Arc<Mutex<NetState>>, vblk: &Option<Arc<Mutex<BlkState>>>) {
+fn handle_mmio_write(id: u64, addr: u64, data: &[u8], serial: &Arc<Mutex<Serial>>, vnet: &Arc<Mutex<NetState>>, vblk: &Option<Arc<Mutex<BlkState>>>, blk_kick: &Option<EventFd>) {
     let val32 = if data.len() >= 4 { u32::from_le_bytes([data[0], data[1], data[2], data[3]]) }
                 else if !data.is_empty() { data[0] as u32 } else { 0 };
     if addr >= 0x09000000 && addr < 0x09001000 && !data.is_empty() {
@@ -158,7 +159,7 @@ fn handle_mmio_write(id: u64, addr: u64, data: &[u8], serial: &Arc<Mutex<Serial>
         return;
     }
     if addr >= VIRTIO_BLK_MMIO_BASE && addr < VIRTIO_BLK_MMIO_BASE + VIRTIO_BLK_MMIO_SIZE {
-        if let Some(blk) = vblk.as_ref() { blk.lock().unwrap().mmio_write(addr - VIRTIO_BLK_MMIO_BASE, val32); return; }
+        if let Some(blk) = vblk.as_ref() { if let Some(kick) = blk_kick.as_ref() { blk.lock().unwrap().mmio_write(addr - VIRTIO_BLK_MMIO_BASE, val32, kick); } else { blk.lock().unwrap().mmio_write(addr - VIRTIO_BLK_MMIO_BASE, val32, &EventFd::new(0).unwrap()); } return; }
     }
     if addr >= VIRTIO_NET_MMIO_BASE && addr < VIRTIO_NET_MMIO_BASE + VIRTIO_NET_MMIO_SIZE {
         vnet.lock().unwrap().mmio_write(addr - VIRTIO_NET_MMIO_BASE, val32);
