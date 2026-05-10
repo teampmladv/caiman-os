@@ -23,7 +23,7 @@ const IIR_RDI:    u8 = 0x04;  // Receiver data available
 pub struct Serial {
     pub rbr:    u8,   // Receiver Buffer Register
     pub ier:    u8,   // Interrupt Enable Register
-    iir:        u8,   // Interrupt Identification Register
+    pub iir:        u8,   // Interrupt Identification Register
     lcr:        u8,   // Line Control Register
     mcr:        u8,   // Modem Control Register
     pub lsr:    u8,   // Line Status Register
@@ -56,7 +56,7 @@ impl Serial {
     }
 
     // QEMU-style: recalculate IIR and inject/clear IRQ
-    fn update_irq(&mut self) {
+    pub fn update_irq(&mut self) {
         let old_iir = self.iir;
         if (self.ier & IER_THRI) != 0 && (self.lsr & LSR_THRE) != 0 {
             self.iir = IIR_THRI;

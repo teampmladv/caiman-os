@@ -4,6 +4,7 @@
 
 use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
+use std::io::Write;
 use clap::Parser;
 use kvm_ioctls::Kvm;
 use tracing::info;
@@ -117,6 +118,27 @@ async fn run(args: Args) -> Result<()> {
     info!("VM running:");
     println!("-----------------------------------------------------");
 
+    // Put terminal in raw mode so stdin goes directly to serial
+    let _raw = {
+        use std::os::unix::io::AsRawFd;
+        let fd = std::io::stdin().as_raw_fd();
+        let mut termios = unsafe { std::mem::zeroed::<libc::termios>() };
+        unsafe { libc::tcgetattr(fd, &mut termios) };
+        let old = termios;
+        termios.c_lflag &= !(libc::ICANON | libc::ECHO | libc::ISIG);
+        termios.c_iflag &= !(libc::IXON | libc::ICRNL);
+        termios.c_cc[libc::VMIN] = 1;
+        termios.c_cc[libc::VTIME] = 0;
+        unsafe { libc::tcsetattr(fd, libc::TCSANOW, &termios) };
+        struct RestoreTermios { fd: i32, old: libc::termios }
+        impl Drop for RestoreTermios {
+            fn drop(&mut self) {
+                unsafe { libc::tcsetattr(self.fd, libc::TCSANOW, &self.old); }
+            }
+        }
+        RestoreTermios { fd, old }
+    };
+
     // Forward stdin -> serial RX
     {
         let serial_stdin = Arc::clone(&serial);
@@ -129,10 +151,22 @@ async fn run(args: Args) -> Result<()> {
                     Ok(0) => break,
                     Ok(n) => {
                         for &b in &buf[..n] {
-                            let mut s = serial_stdin.lock().unwrap();
-                            s.rbr = b;
-                            s.lsr |= 0x01; // LSR_DR -- data ready
-                            let _ = irqfd_stdin.write(1);
+                            let byte = if b == b'\r' { b'\n' } else { b };
+                            // Local echo
+                            let _ = std::io::stdout().write_all(&[byte]);
+                            let _ = std::io::stdout().flush();
+                            // Inject into VM serial RX -- keep signaling until consumed
+                            {
+                                let mut s = serial_stdin.lock().unwrap();
+                                s.rbr = byte;
+                                s.lsr |= 0x01;
+                                s.iir = 0x04; // IIR_RDI -- force RX interrupt
+                            }
+                            // Inject IRQ multiple times to ensure vCPU wakes
+                            for _ in 0..4 {
+                                let _ = irqfd_stdin.write(1);
+                                std::thread::sleep(std::time::Duration::from_millis(1));
+                            }
                         }
                     }
                     Err(_) => break,
