@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-VERSION="${1:-1.1.0}"
+VERSION="${1:-1.3.0}"
 ARCH="x86_64"
 ISO_NAME="caiman-os-${VERSION}-${ARCH}.iso"
 WORK_DIR="/tmp/caiman-iso-build"
