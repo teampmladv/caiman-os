@@ -90,7 +90,10 @@ async fn run(args: Args) -> Result<()> {
     };
 
     // -- 6. Serial + vCPUs ------------------------------------------------
+    let serial_irqfd = Arc::new(vmm_sys_util::eventfd::EventFd::new(0).context("serial irqfd")?);
+    vm.vm_fd().register_irqfd(&serial_irqfd, 4).map_err(|e| anyhow::anyhow!("serial irqfd: {e}"))?;
     let serial = Arc::new(Mutex::new(Serial::new()));
+    serial.lock().unwrap().irqfd = Some(Arc::clone(&serial_irqfd));
     let load   = kvm::loader::KernelLoadResult {
         kernel_load:      kvm::loader::KernelLoadOffset { offset: lr.entry_point },
         boot_params_addr: kvm::loader::ZERO_PAGE_ADDR,
@@ -113,6 +116,30 @@ async fn run(args: Args) -> Result<()> {
 
     info!("VM running:");
     println!("-----------------------------------------------------");
+
+    // Forward stdin -> serial RX
+    {
+        let serial_stdin = Arc::clone(&serial);
+        let irqfd_stdin  = serial_irqfd.try_clone().context("clone serial irqfd for stdin")?;
+        std::thread::Builder::new().name("serial-stdin".into()).spawn(move || {
+            use std::io::Read;
+            let mut buf = [0u8; 64];
+            loop {
+                match std::io::stdin().read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        for &b in &buf[..n] {
+                            let mut s = serial_stdin.lock().unwrap();
+                            s.rbr = b;
+                            s.lsr |= 0x01; // LSR_DR -- data ready
+                            let _ = irqfd_stdin.write(1);
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        }).ok();
+    }
 
     // -- 7. virtio-net dataplane -------------------------------------------
     vnet.start_dataplane(&args.tap, Arc::clone(&mem))?;

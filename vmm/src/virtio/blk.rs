@@ -115,7 +115,7 @@ impl BlkState {
             REG_QUEUE_USED_LO  => self.queue.set_used_ring(val, 0),
             REG_QUEUE_USED_HI  => self.queue.set_used_ring(0, val),
             // Guest kicked the device -- wake up dataplane
-            REG_QUEUE_NOTIFY   => { let _ = kick.write(1); }
+            REG_QUEUE_NOTIFY   => { tracing::info!("BLK QUEUE_NOTIFY kick"); let _ = kick.write(1); }
             _                  => {}
         }
     }
@@ -196,15 +196,22 @@ fn blk_dataplane(
     loop {
         // Block until guest kicks us via QUEUE_NOTIFY -- no busy polling
         kickfd.read().ok();
+        tracing::info!("BLK dataplane woke up -- processing queue");
 
         // Process all available requests in the queue
         loop {
-            let (head, chain, irq_status_ref) = {
+            let (head, chain) = {
                 let mut st = state.lock().unwrap();
-                if !st.queue.ready { break; }
-                let Some(head) = st.queue.next_avail(&mem) else { break; };
+                tracing::info!("BLK queue ready={} desc={:#x} avail={:#x}", st.queue.ready, st.queue.desc_table, st.queue.avail_ring);
+                if !st.queue.ready || st.queue.avail_ring == 0 { break; }
+                let Some(head) = st.queue.next_avail(&mem) else {
+                    tracing::info!("BLK no requests available");
+                    break;
+                };
+                tracing::info!("BLK processing head={head}");
                 let chain = st.queue.read_chain(&mem, head);
-                (head, chain, st.irq_status)
+                tracing::info!("BLK chain len={}", chain.len());
+                (head, chain)
             };
 
             if chain.len() < 2 {
@@ -270,6 +277,7 @@ fn blk_dataplane(
                 st.queue.add_used(&mem, head, used_len);
                 st.irq_status |= 0x1;
             }
+            tracing::info!("BLK IRQ injected status={status}");
             let _ = irqfd.write(1);
         }
     }

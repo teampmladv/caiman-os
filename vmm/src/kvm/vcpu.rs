@@ -11,7 +11,7 @@ use kvm_bindings::{
     KVM_EXIT_HLT, KVM_EXIT_IO, KVM_EXIT_MMIO,
     KVM_EXIT_SHUTDOWN, KVM_EXIT_SYSTEM_EVENT,
 };
-use kvm_ioctls::{VcpuFd, VmFd};
+use kvm_ioctls::{VcpuExit, VcpuFd, VmFd};
 use vmm_sys_util::eventfd::EventFd;
 use tracing::{debug, info, warn};
 
@@ -83,14 +83,14 @@ fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>
     loop {
         match fd.run() {
             Ok(exit) => {
-                use kvm_ioctls::VcpuExit::*;
                 match exit {
-                    Io => handle_io(id, run, &serial),
-                    MmioRead(addr, data) => handle_mmio_read(id, addr, data, &vnet, &vblk),
-                    MmioWrite(addr, data) => handle_mmio_write(id, addr, data, &serial, &vnet, &vblk, &blk_kick),
-                    Hlt => { debug!("vCPU {id}: HLT"); std::thread::sleep(std::time::Duration::from_micros(100)); }
-                    Shutdown => { info!("vCPU {id}: SHUTDOWN"); break; }
-                    SystemEvent(ev, _) => { info!("vCPU {id}: system event {ev:#x}"); break; }
+                    VcpuExit::IoIn(port, data)  => handle_io_in(id, port, data, &serial),
+                    VcpuExit::IoOut(port, data) => handle_io_out(id, port, data, &serial),
+                    VcpuExit::MmioRead(addr, data) => handle_mmio_read(id, addr, data, &vnet, &vblk),
+                    VcpuExit::MmioWrite(addr, data) => handle_mmio_write(id, addr, data, &serial, &vnet, &vblk, &blk_kick),
+                    VcpuExit::Hlt => { debug!("vCPU {id}: HLT"); std::thread::sleep(std::time::Duration::from_micros(100)); }
+                    VcpuExit::Shutdown => { info!("vCPU {id}: SHUTDOWN"); break; }
+                    VcpuExit::SystemEvent(ev, _) => { info!("vCPU {id}: system event {ev:#x}"); break; }
                     _ => { debug!("vCPU {id}: unhandled exit {:?}", exit); }
                 }
             }
@@ -104,34 +104,38 @@ fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>
 
 const KVM_IO_OUT: u8 = 1;
 
+fn handle_io_out(id: u64, port: u16, data: &[u8], serial: &Arc<Mutex<Serial>>) {
+    if port >= SERIAL_BASE && port < SERIAL_BASE + 8 {
+        serial.lock().unwrap().write_port(port, data[0]);
+        return;
+    }
+    if port == 0x604 {
+        info!("vCPU {id}: ACPI reset");
+        std::process::exit(0);
+    }
+    debug!("vCPU {id}: unhandled IO OUT port={port:#x}");
+}
+
+fn handle_io_in(id: u64, port: u16, data: &mut [u8], serial: &Arc<Mutex<Serial>>) {
+    if port >= SERIAL_BASE && port < SERIAL_BASE + 8 {
+        let val = serial.lock().unwrap().read_port(port);
+        for b in data.iter_mut() { *b = val; }
+        return;
+    }
+    debug!("vCPU {id}: unhandled IO IN port={port:#x}");
+}
+
+#[allow(dead_code)]
 fn handle_io(id: u64, run: &KvmRunPtr, serial: &Arc<Mutex<Serial>>) {
     let port = run.io_port();
     let direction = run.io_direction();
     let size = run.io_size();
-    if port >= SERIAL_BASE && port < SERIAL_BASE + 8 {
-        if direction == KVM_IO_OUT {
-            let byte = run.io_data_u8();
-            serial.lock().unwrap().write_port(port, byte);
-        } else {
-            let val = serial.lock().unwrap().read_port(port);
-            let offset = run.io_data_offset() as usize;
-            unsafe {
-                let dst = (run.ptr as *mut u8).add(offset);
-                let count = run.io_count() as usize;
-                for i in 0..count { *dst.add(i) = val; }
-            }
-        }
-        return;
-    }
-    if port == 0x604 && direction == KVM_IO_OUT {
-        info!("vCPU {id}: ACPI reset");
-        std::process::exit(0);
-    }
     debug!("vCPU {id}: unhandled IO port={port:#x} dir={direction} size={size}");
 }
 
 fn handle_mmio_read(id: u64, addr: u64, data: &mut [u8], vnet: &Arc<Mutex<NetState>>, vblk: &Option<Arc<Mutex<BlkState>>>) {
     if addr >= VIRTIO_BLK_MMIO_BASE && addr < VIRTIO_BLK_MMIO_BASE + VIRTIO_BLK_MMIO_SIZE {
+        tracing::info!("BLK MMIO READ addr={:#x} offset={:#x}", addr, addr - VIRTIO_BLK_MMIO_BASE);
         if let Some(blk) = vblk.as_ref() {
             let val = blk.lock().unwrap().mmio_read(addr - VIRTIO_BLK_MMIO_BASE);
             let bytes = val.to_le_bytes();

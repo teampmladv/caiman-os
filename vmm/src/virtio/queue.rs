@@ -32,8 +32,8 @@ pub struct Virtqueue {
     pub size:       u16,
     pub ready:      bool,
 
-    desc_table:  u64,    // GPA of descriptor table
-    avail_ring:  u64,    // GPA of available ring
+    pub desc_table:  u64,    // GPA of descriptor table
+    pub avail_ring:  u64,    // GPA of available ring
     used_ring:   u64,    // GPA of used ring
 
     last_avail_idx: u16, // last index we processed from avail ring
@@ -56,13 +56,16 @@ impl Virtqueue {
     // -- MMIO configuration (called by MMIO write handler) -----------------
 
     pub fn set_desc_table(&mut self, low: u32, high: u32) {
-        self.desc_table = (high as u64) << 32 | low as u64;
+        if low  != 0 { self.desc_table = (self.desc_table & 0xFFFF_FFFF_0000_0000) | low as u64; }
+        if high != 0 { self.desc_table = (self.desc_table & 0x0000_0000_FFFF_FFFF) | (high as u64) << 32; }
     }
     pub fn set_avail_ring(&mut self, low: u32, high: u32) {
-        self.avail_ring = (high as u64) << 32 | low as u64;
+        if low  != 0 { self.avail_ring = (self.avail_ring & 0xFFFF_FFFF_0000_0000) | low as u64; }
+        if high != 0 { self.avail_ring = (self.avail_ring & 0x0000_0000_FFFF_FFFF) | (high as u64) << 32; }
     }
     pub fn set_used_ring(&mut self, low: u32, high: u32) {
-        self.used_ring = (high as u64) << 32 | low as u64;
+        if low  != 0 { self.used_ring = (self.used_ring & 0xFFFF_FFFF_0000_0000) | low as u64; }
+        if high != 0 { self.used_ring = (self.used_ring & 0x0000_0000_FFFF_FFFF) | (high as u64) << 32; }
     }
 
     // -- Descriptor iteration ----------------------------------------------

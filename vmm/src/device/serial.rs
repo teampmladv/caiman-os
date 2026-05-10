@@ -1,91 +1,111 @@
-//! vmm/src/device/serial.rs -- UART 16550A emulacion
-//!
-//! Implementa el UART 16550A que el kernel de Linux usa como consola
-//! serie (ttyS0). El kernel escribe caracteres via outb al puerto 0x3F8
-//! y los leemos aqu?, imprimiendolos en stdout del proceso VMM.
-//!
-//! Registros 16550A (base = 0x3F8 para COM1):
-//!   0x3F8  RBR/THR/DLL  Receive Buffer / Transmit Holding / Divisor LSB
-//!   0x3F9  IER/DLM      Interrupt Enable / Divisor MSB
-//!   0x3FA  IIR/FCR      Interrupt ID / FIFO Control
-//!   0x3FB  LCR          Line Control Register
-//!   0x3FC  MCR          Modem Control Register
-//!   0x3FD  LSR          Line Status Register (THRE bit = listo para TX)
-//!   0x3FE  MSR          Modem Status Register
-//!   0x3FF  SCR          Scratch Register
+//! device/serial.rs -- 16550A UART emulation (modelo QEMU serial_update_irq)
 
 use std::io::Write;
-use anyhow::Result;
+use std::sync::Arc;
+use vmm_sys_util::eventfd::EventFd;
 
-pub const SERIAL_BASE: u16 = 0x3F8;  // COM1
-pub const SERIAL_SIZE: u16 = 8;
+pub const SERIAL_BASE: u16 = 0x3f8;
 
 // LSR bits
-const LSR_THRE:  u8 = 0x20;  // Transmitter Holding Register Empty (listo para TX)
-const LSR_TEMT:  u8 = 0x40;  // Transmitter Empty
-const LSR_DR:    u8 = 0x01;  // Data Ready (hay datos para leer)
+const LSR_DR:   u8 = 0x01;  // Data Ready
+const LSR_THRE: u8 = 0x20;  // Transmitter Holding Register Empty
+const LSR_TEMT: u8 = 0x40;  // Transmitter Empty
+
+// IER bits
+const IER_RDI:  u8 = 0x01;  // Receiver Data Interrupt
+const IER_THRI: u8 = 0x02;  // Transmitter Holding Register Empty Interrupt
+
+// IIR values
+const IIR_NO_INT: u8 = 0x01;  // No interrupt pending
+const IIR_THRI:   u8 = 0x02;  // TX holding register empty
+const IIR_RDI:    u8 = 0x04;  // Receiver data available
 
 pub struct Serial {
-    rbr:  u8,     // Receive Buffer Register
-    ier:  u8,     // Interrupt Enable Register
-    iir:  u8,     // Interrupt ID Register
-    lcr:  u8,     // Line Control Register
-    mcr:  u8,     // Modem Control Register
-    lsr:  u8,     // Line Status Register
-    msr:  u8,     // Modem Status Register
-    scr:  u8,     // Scratch Register
-    dll:  u8,     // Divisor Latch LSB (cuando DLAB=1)
-    dlm:  u8,     // Divisor Latch MSB (cuando DLAB=1)
-    dlab: bool,   // Divisor Latch Access Bit (LCR bit 7)
-    output: Vec<u8>, // buffer para el output hacia la consola
+    pub rbr:    u8,   // Receiver Buffer Register
+    pub ier:    u8,   // Interrupt Enable Register
+    iir:        u8,   // Interrupt Identification Register
+    lcr:        u8,   // Line Control Register
+    mcr:        u8,   // Modem Control Register
+    pub lsr:    u8,   // Line Status Register
+    msr:        u8,   // Modem Status Register
+    scr:        u8,   // Scratch Register
+    dll:        u8,   // Divisor Latch LSB
+    dlm:        u8,   // Divisor Latch MSB
+    dlab:       bool, // Divisor Latch Access Bit
+    output:     Vec<u8>,
+    pub irqfd:  Option<Arc<EventFd>>,
 }
 
 impl Serial {
     pub fn new() -> Self {
         Self {
-            rbr: 0, ier: 0,
-            iir: 0x01,    // no interrupt pending
-            lcr: 0, mcr: 0,
-            lsr: LSR_THRE | LSR_TEMT, // listo para transmitir
-            msr: 0x30,    // CTS + DSR
+            rbr: 0,
+            ier: 0,
+            iir: IIR_NO_INT,
+            lcr: 0,
+            mcr: 0,
+            lsr: LSR_THRE | LSR_TEMT,
+            msr: 0,
             scr: 0,
-            dll: 0x0C, dlm: 0, // 9600 baud @ 1.8432 MHz
+            dll: 0,
+            dlm: 0,
             dlab: false,
-            output: Vec::with_capacity(256),
+            output: Vec::new(),
+            irqfd: None,
         }
     }
 
-    /// Manejar una escritura del guest al puerto I/O del serial.
+    // QEMU-style: recalculate IIR and inject/clear IRQ
+    fn update_irq(&mut self) {
+        let old_iir = self.iir;
+        if (self.ier & IER_THRI) != 0 && (self.lsr & LSR_THRE) != 0 {
+            self.iir = IIR_THRI;
+        } else if (self.ier & IER_RDI) != 0 && (self.lsr & LSR_DR) != 0 {
+            self.iir = IIR_RDI;
+        } else {
+            self.iir = IIR_NO_INT;
+        }
+        // Inject IRQ if pending
+        if self.iir != IIR_NO_INT {
+            if let Some(ref fd) = self.irqfd {
+                let _ = fd.write(1);
+            }
+        }
+    }
+
     pub fn write_port(&mut self, port: u16, data: u8) {
         let reg = port - SERIAL_BASE;
         match reg {
             0 => {
                 if self.dlab {
-                    self.dll = data;  // Divisor Latch LSB
+                    self.dll = data;
                 } else {
-                    // THR -- Transmit Holding Register: el guest esta enviando un byte
+                    // THR write -- transmit byte
                     self.transmit_byte(data);
+                    // LSR: THRE clear while transmitting, then set again
+                    self.lsr &= !LSR_THRE;
+                    self.lsr &= !LSR_TEMT;
+                    // Immediately ready again (we flush instantly)
+                    self.lsr |= LSR_THRE | LSR_TEMT;
+                    self.update_irq();
                 }
             }
             1 => {
                 if self.dlab {
-                    self.dlm = data;  // Divisor Latch MSB
+                    self.dlm = data;
                 } else {
-                    self.ier = data;  // Interrupt Enable Register
+                    self.ier = data;
+                    self.update_irq();
                 }
             }
-            2 => { /* FCR write -- ignoramos FIFO control */ }
-            3 => {
-                self.lcr  = data;
-                self.dlab = data & 0x80 != 0;
-            }
+            2 => { /* FCR -- ignore FIFO control */ }
+            3 => { self.lcr = data; self.dlab = data & 0x80 != 0; }
             4 => { self.mcr = data; }
             7 => { self.scr = data; }
             _ => {}
         }
     }
 
-    /// Manejar una lectura del guest desde el puerto I/O del serial.
     pub fn read_port(&mut self, port: u16) -> u8 {
         let reg = port - SERIAL_BASE;
         match reg {
@@ -93,12 +113,18 @@ impl Serial {
                 if self.dlab { self.dll }
                 else {
                     let v = self.rbr;
-                    self.lsr &= !LSR_DR;  // limpiar data-ready
+                    self.lsr &= !LSR_DR;
+                    self.update_irq();
                     v
                 }
             }
             1 => if self.dlab { self.dlm } else { self.ier },
-            2 => self.iir,
+            2 => {
+                // Reading IIR clears THRI interrupt
+                let v = self.iir;
+                if v == IIR_THRI { self.iir = IIR_NO_INT; }
+                v
+            }
             3 => self.lcr,
             4 => self.mcr,
             5 => self.lsr,
@@ -110,9 +136,7 @@ impl Serial {
 
     fn transmit_byte(&mut self, b: u8) {
         self.output.push(b);
-
-        // Flush en newline o cuando el buffer esta lleno
-        if b == b'\n' || self.output.len() >= 256 {
+        if b == b'\n' || self.output.len() >= 64 {
             self.flush();
         }
     }
