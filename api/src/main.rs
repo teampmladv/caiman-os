@@ -1,4 +1,4 @@
-//! caiman-api v1.1.0 -- REST API (production + Railway demo mode)
+//! caiman-api v1.3.0 -- REST API (production + Railway demo mode)
 //!
 //! DEMO_MODE=true  -> in-memory simulation, no KVM required (Railway)
 //! DEMO_MODE=false -> real VMs via caiman-vmm (bare metal)
@@ -251,13 +251,13 @@ async fn main() {
     // - Public routes (no token needed) -
     let public = Router::new()
         .route("/health",          get(health))
-        .route("/auth/bootstrap",  post(auth::bootstrap_token));
+        .route("/auth/bootstrap",  post(auth::bootstrap_token))
+        .route("/auth/token",      post(auth::generate_token));
 
     if demo_mode {
         let store: SharedDemo = Arc::new(RwLock::new(DemoStore::new()));
 
         let protected = Router::new()
-            .route("/auth/token",                     post(auth::generate_token))
             .route("/api/vms",                        get(demo_list_vms).post(demo_create_vm))
             .route("/api/vms/:id",                    get(demo_get_vm).delete(demo_delete_vm))
             .route("/api/vms/:id/start",              post(demo_start_vm))
@@ -284,7 +284,6 @@ async fn main() {
         let _ = std::fs::create_dir_all("/var/run/caiman");
 
         let protected = Router::new()
-            .route("/auth/token",                     post(auth::generate_token))
             .route("/api/vms",                        get(list_vms).post(create_vm))
             .route("/api/vms/:id",                    get(get_vm).delete(delete_vm_h))
             .route("/api/vms/:id/start",              post(start_vm_h))

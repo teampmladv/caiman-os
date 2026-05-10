@@ -117,6 +117,11 @@ async fn run(args: Args) -> Result<()> {
 
     info!("VM running:");
     println!("-----------------------------------------------------");
+    eprintln!("[DEBUG] writing vm state for {}", args.vm_id);
+    eprintln!("CAIMAN: writing state for vm_id={}", args.vm_id);
+    write_vm_state(&args, std::process::id());
+    eprintln!("CAIMAN: state written");
+    eprintln!("[DEBUG] vm state written");
 
     // Put terminal in raw mode so stdin goes directly to serial
     let _raw = {
@@ -185,9 +190,44 @@ async fn run(args: Args) -> Result<()> {
     println!("-----------------------------------------------------");
     netlink_ctrl::vm_del(vm_num).await.ok();
     info!("VM {} shutdown", args.vm_id);
+    let state_path = format!("/var/run/caiman/{}.json", args.vm_id);
+    let _ = std::fs::remove_file(&state_path);
     Ok(())
 }
 
 pub fn fmt_mac(mac: &[u8; 6]) -> String {
     mac.map(|b| format!("{b:02x}")).join(":")
+}
+
+fn write_vm_state(args: &Args, pid: u32) {
+    let state_dir = "/var/run/caiman";
+    let _ = std::fs::create_dir_all(state_dir);
+    let now = chrono::Utc::now().to_rfc3339();
+    let state = serde_json::json!({
+        "id":          args.vm_id,
+        "name":        args.vm_id,
+        "status":      "RUNNING",
+        "pid":         pid,
+        "cpus":        args.cpus,
+        "memMib":      args.mem_mib,
+        "nodeName":    hostname::get().unwrap_or_default().to_string_lossy().to_string(),
+        "kernel":      args.kernel,
+        "disk":        args.disk,
+        "mac":         "02:ca:1m:an:00:01",
+        "uplink":      "eth0",
+        "labels":      {},
+        "createdAt":   now,
+        "startedAt":   now,
+        "cpuUsagePct": 0.0,
+        "memUsedMib":  0,
+        "netRxMbps":   0.0,
+        "netTxMbps":   0.0,
+        "uptimeSecs":  0,
+    });
+    let path = format!("{}/{}.json", state_dir, args.vm_id);
+    eprintln!("[DEBUG] writing to {}", path);
+    match std::fs::write(&path, serde_json::to_string_pretty(&state).unwrap()) {
+        Ok(_) => eprintln!("[DEBUG] write OK"),
+        Err(e) => eprintln!("[DEBUG] write ERROR: {}", e),
+    }
 }

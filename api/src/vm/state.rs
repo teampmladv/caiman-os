@@ -99,7 +99,10 @@ impl VmState {
             .filter(|e| e.path().extension().map(|x| x == "json").unwrap_or(false))
             .filter_map(|e| {
                 let id = e.path().file_stem()?.to_str()?.to_string();
-                Self::load(&id).ok()
+                match Self::load(&id) {
+                    Ok(v) => Some(v),
+                    Err(e) => { eprintln!("[VmState] failed to load {id}: {e}"); None }
+                }
             })
             .collect()
     }

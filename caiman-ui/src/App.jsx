@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { AppProvider, useApp } from './store.jsx'
 import Dashboard from './views/Dashboard.jsx'
 import VMs from './views/VMs.jsx'
@@ -18,6 +19,7 @@ import Import from './views/Import.jsx'
 import ClusterView from './views/ClusterView.jsx'
 import ClusterSidebarList from './components/clusters/ClusterSidebarList.jsx'
 import { getActiveCluster } from './components/clusters/ClusterStore.js'
+import Login from './views/Login.jsx'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', group: 'overview',  icon: <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" width="18" height="18"><rect x="2" y="2" width="7" height="7" rx="1"/><rect x="11" y="2" width="7" height="7" rx="1"/><rect x="2" y="11" width="7" height="7" rx="1"/><rect x="11" y="11" width="7" height="7" rx="1"/></svg> },
@@ -150,6 +152,9 @@ function Layout() {
 }
 
 export default function App() {
+  const [authed, setAuthed] = useState(!!getActiveCluster())
+  if (!authed) return <Login onLogin={() => setAuthed(true)} />
+
   return (
     <AppProvider>
       <Layout />

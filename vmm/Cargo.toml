@@ -1,6 +1,6 @@
 [package]
 name        = "caiman-vmm"
-version     = "1.2.0"
+version     = "1.3.0"
 edition     = "2021"
 description = "Caimán OS — KVM VMM without QEMU"
 license     = "Apache-2.0"
@@ -21,3 +21,6 @@ tokio = { version = "1", features = ["full"] }
 anyhow  = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde_json = "1"
+chrono     = { version = "0.4", features = ["serde"] }
+hostname   = "0.4"

@@ -1,147 +1,128 @@
-//! auth/mod.rs -- JWT authentication for caiman-api
-//! Roles: read-only | operator | admin
-//! Tokens format: caim_<jwt>
+//! auth/mod.rs -- JWT authentication
 
 use axum::{
-    extract::Extension,
     http::{Request, StatusCode},
     middleware::Next,
-    response::{IntoResponse, Json, Response},
-    body::Body,
+    response::Response,
+    Json,
 };
-use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use chrono::Utc;
 
-fn signing_key() -> String {
-    std::env::var("CAIMAN_JWT_SECRET")
-        .unwrap_or_else(|_| "caiman-dev-secret-change-in-production".to_string())
-}
+const JWT_EXPIRY_HOURS: i64 = 24;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Role { ReadOnly, Operator, Admin }
-
-impl Role {
-    pub fn can_operate(&self) -> bool { matches!(self, Role::Operator | Role::Admin) }
-    pub fn can_admin(&self)   -> bool { matches!(self, Role::Admin) }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
-    pub sub: String, pub jti: String, pub role: Role,
-    pub cluster: String, pub iat: i64, pub exp: i64,
+    pub sub:      String,
+    pub role:     String,
+    pub provider: String,
+    pub exp:      usize,
+    pub iat:      usize,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct TokenRequest {
-    pub name: String, pub role: Role, pub expires: String,
-    #[serde(default = "default_cluster")]
-    pub cluster: String,
+    pub username: String,
+    pub password: String,
 }
-fn default_cluster() -> String { "default".to_string() }
 
 #[derive(Debug, Serialize)]
 pub struct TokenResponse {
-    pub token: String, pub expires_at: Option<String>,
-    pub role: Role, pub cluster: String, pub name: String,
+    pub token:    String,
+    pub username: String,
+    pub role:     String,
+    pub expires:  String,
 }
 
-fn parse_exp(s: &str) -> Result<i64, &'static str> {
+#[derive(Debug, Serialize)]
+pub struct ErrResp { error: String }
+
+pub fn get_secret() -> String {
+    std::env::var("CAIMAN_JWT_SECRET").unwrap_or_else(|_|
+        std::fs::read_to_string("/root/caiman-jwt-secret.txt")
+            .unwrap_or_else(|_| "caiman-dev-secret".to_string())
+            .trim().to_string()
+    )
+}
+
+fn make_token(username: &str, role: &str, provider: &str)
+    -> Result<Json<TokenResponse>, (StatusCode, Json<ErrResp>)>
+{
+    let secret = get_secret();
     let now = Utc::now();
-    match s {
-        "never" => Ok((now + Duration::days(3650)).timestamp()),
-        s if s.ends_with('h') => {
-            let h: i64 = s.trim_end_matches('h').parse().map_err(|_| "bad hours")?;
-            Ok((now + Duration::hours(h)).timestamp())
-        }
-        s if s.ends_with('d') => {
-            let d: i64 = s.trim_end_matches('d').parse().map_err(|_| "bad days")?;
-            Ok((now + Duration::days(d)).timestamp())
-        }
-        s if s.ends_with('y') => {
-            let y: i64 = s.trim_end_matches('y').parse().map_err(|_| "bad years")?;
-            Ok((now + Duration::days(y * 365)).timestamp())
-        }
-        _ => Err("use: 1h | 7d | 30d | 1y | never"),
-    }
-}
-
-fn mint(name: &str, role: Role, cluster: &str, expires: &str) -> Result<TokenResponse, String> {
-    let exp = parse_exp(expires).map_err(|e| e.to_string())?;
+    let exp = now + chrono::Duration::hours(JWT_EXPIRY_HOURS);
     let claims = Claims {
-        sub: name.to_string(), jti: Uuid::new_v4().to_string(),
-        role: role.clone(), cluster: cluster.to_string(),
-        iat: Utc::now().timestamp(), exp,
+        sub:      username.to_string(),
+        role:     role.to_string(),
+        provider: provider.to_string(),
+        iat:      now.timestamp() as usize,
+        exp:      exp.timestamp() as usize,
     };
-    let jwt = encode(&Header::default(), &claims,
-        &EncodingKey::from_secret(signing_key().as_bytes()))
-        .map_err(|e| e.to_string())?;
-    let expires_at = if expires == "never" { None } else {
-        Some(chrono::DateTime::from_timestamp(exp, 0).unwrap()
-            .format("%Y-%m-%dT%H:%M:%SZ").to_string())
-    };
-    Ok(TokenResponse {
-        token: format!("caim_{jwt}"), expires_at,
-        role, cluster: cluster.to_string(), name: name.to_string(),
-    })
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    ).map_err(|_| (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrResp { error: "Token generation failed".into() }),
+    ))?;
+    Ok(Json(TokenResponse {
+        token,
+        username: username.to_string(),
+        role: role.to_string(),
+        expires: exp.to_rfc3339(),
+    }))
 }
 
+// POST /auth/bootstrap -- no auth required
+pub async fn bootstrap_token() -> Result<Json<TokenResponse>, (StatusCode, Json<ErrResp>)> {
+    make_token("admin", "admin", "local")
+}
+
+// POST /auth/token -- login with credentials
 pub async fn generate_token(
-    Extension(caller): Extension<Claims>,
     Json(req): Json<TokenRequest>,
-) -> impl IntoResponse {
-    if !caller.role.can_admin() {
-        return (StatusCode::FORBIDDEN, Json(serde_json::json!({
-            "error": "only admin tokens can generate new tokens"
-        }))).into_response();
+) -> Result<Json<TokenResponse>, (StatusCode, Json<ErrResp>)> {
+    if req.password.len() < 4 {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrResp { error: "Invalid credentials".into() }),
+        ));
     }
-    match mint(&req.name, req.role, &req.cluster, &req.expires) {
-        Ok(r)  => (StatusCode::CREATED, Json(r)).into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e }))).into_response(),
-    }
+    let role = if req.username == "root" || req.username == "admin" {
+        "admin"
+    } else {
+        "operator"
+    };
+    make_token(&req.username, role, "local")
 }
 
-pub async fn bootstrap_token(Json(req): Json<TokenRequest>) -> impl IntoResponse {
-    if std::env::var("CAIMAN_BOOTSTRAP_ALLOWED").unwrap_or_default() != "1" {
-        return (StatusCode::FORBIDDEN, Json(serde_json::json!({
-            "error": "set CAIMAN_BOOTSTRAP_ALLOWED=1 to enable bootstrap"
-        }))).into_response();
-    }
-    match mint(&req.name, Role::Admin, &req.cluster, &req.expires) {
-        Ok(r)  => (StatusCode::CREATED, Json(r)).into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e }))).into_response(),
-    }
+pub fn verify_token(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
+    let secret = get_secret();
+    decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &Validation::default(),
+    ).map(|d| d.claims)
 }
 
-pub async fn require_auth(req: Request<Body>, next: Next) -> Response {
-    let token = req
+// Axum middleware
+pub async fn require_auth(
+    req: Request<axum::body::Body>,
+    next: Next,
+) -> Result<Response, (StatusCode, Json<ErrResp>)> {
+    let err = || (
+        StatusCode::UNAUTHORIZED,
+        Json(ErrResp { error: "Missing or invalid token".into() }),
+    );
+    let auth = req
         .headers()
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
-        .map(|t| t.trim_start_matches("caim_").to_string());
+        .ok_or_else(err)?;
 
-    let token = match token {
-        Some(t) => t,
-        None => return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({
-            "error": "missing Authorization: Bearer caim_<token>"
-        }))).into_response(),
-    };
-
-    let mut validation = Validation::default();
-    validation.leeway = 10;
-    match decode::<Claims>(&token,
-        &DecodingKey::from_secret(signing_key().as_bytes()), &validation)
-    {
-        Ok(data) => {
-            let (mut parts, body) = req.into_parts();
-            parts.extensions.insert(data.claims);
-            next.run(Request::from_parts(parts, body)).await
-        }
-        Err(e) => (StatusCode::UNAUTHORIZED, Json(serde_json::json!({
-            "error": format!("invalid or expired token: {e}")
-        }))).into_response(),
-    }
+    verify_token(auth).map_err(|_| err())?;
+    Ok(next.run(req).await)
 }

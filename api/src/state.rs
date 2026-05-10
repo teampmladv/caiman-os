@@ -17,6 +17,12 @@ pub struct AppState {
     pub cache: Cache<String, serde_json::Value>,
     /// SQLite connection pool (audit log, DRS history)
     pub db: sqlx::SqlitePool,
+    /// JWT signing secret (from env CAIMAN_JWT_SECRET or /root/caiman-jwt-secret.txt)
+    pub jwt_secret: String,
+    /// LDAP/AD URL (optional, from env CAIMAN_LDAP_URL)
+    pub ldap_url: Option<String>,
+    /// LDAP base DN (optional, from env CAIMAN_LDAP_BASE)
+    pub ldap_base: Option<String>,
 }
 
 impl AppState {
@@ -43,6 +49,14 @@ impl AppState {
                           .time_to_live(std::time::Duration::from_secs(5))
                           .build(),
             db,
+            jwt_secret: std::env::var("CAIMAN_JWT_SECRET")
+                .unwrap_or_else(|_| {
+                    std::fs::read_to_string("/root/caiman-jwt-secret.txt")
+                        .unwrap_or_else(|_| "caiman-default-secret-change-me".to_string())
+                        .trim().to_string()
+                }),
+            ldap_url:  std::env::var("CAIMAN_LDAP_URL").ok(),
+            ldap_base: std::env::var("CAIMAN_LDAP_BASE").ok(),
         })
     }
 }
