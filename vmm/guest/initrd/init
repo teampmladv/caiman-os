@@ -1,0 +1,28 @@
+#!/bin/sh
+mount -t proc  none /proc
+mount -t sysfs none /sys
+mount -t devtmpfs none /dev 2>/dev/null || true
+
+KVER="6.6.69-0-virt"
+insmod /lib/modules/$KVER/kernel/drivers/virtio/virtio_mmio.ko 2>/dev/null || true
+insmod /lib/modules/$KVER/kernel/drivers/block/virtio_blk.ko  2>/dev/null || true
+insmod /lib/modules/$KVER/kernel/lib/crc16.ko                 2>/dev/null || true
+insmod /lib/modules/$KVER/kernel/crypto/crc32c_generic.ko 2>/dev/null || true
+insmod /lib/modules/$KVER/kernel/fs/mbcache.ko                2>/dev/null || true
+insmod /lib/modules/$KVER/kernel/fs/jbd2/jbd2.ko              2>/dev/null || true
+insmod /lib/modules/$KVER/kernel/fs/ext4/ext4.ko              2>/dev/null || true
+
+i=0
+while [ $i -lt 50 ]; do
+    [ -b /dev/vda ] && break
+    i=$((i+1)); sleep 0.1
+done
+
+mount -t ext4 /dev/vda /mnt && \
+    mount --move /proc /mnt/proc 2>/dev/null && \
+    mount --move /sys  /mnt/sys  2>/dev/null && \
+    mount --move /dev  /mnt/dev  2>/dev/null && \
+    exec switch_root /mnt /bin/sh /etc/console.sh
+
+echo "Mount failed -- fallback shell"
+exec /bin/sh
