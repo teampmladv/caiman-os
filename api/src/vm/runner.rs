@@ -20,6 +20,7 @@ pub struct CreateVmRequest {
     pub cpus:      Option<u8>,
     pub mem_mib:   Option<u64>,
     pub kernel:    Option<String>,
+    pub initrd:    Option<String>,
     pub disk:      Option<String>,
     pub uplink:    Option<String>,
     pub cmdline:   Option<String>,
@@ -88,7 +89,9 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
     let id      = format!("vm-{}", &Uuid::new_v4().to_string()[..8]);
     let cpus    = req.cpus.unwrap_or(1);
     let mem_mib = req.mem_mib.unwrap_or(256);
-    let kernel  = req.kernel.clone().unwrap_or_else(|| "/var/lib/caiman/kernels/vmlinuz".into());
+    let kernel  = req.kernel.clone().unwrap_or_else(|| "/var/lib/caiman/kernels/vmlinuz-alpine".into());
+    let disk    = req.disk.clone().or_else(|| Some("/var/lib/caiman/kernels/caiman-rootfs.img".into()));
+    let initrd  = req.initrd.clone().unwrap_or_else(|| "/var/lib/caiman/kernels/caiman-initrd.img".into());
     let uplink  = req.uplink.clone().unwrap_or_else(detect_uplink);
     let net_mode = req.net_mode.clone().unwrap_or_else(|| "nat".into());
 
@@ -100,6 +103,10 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
     let (tap_name, ip_config) = cni_add(&id, &net_mode, &uplink).await?;
 
     // 2. Write initial state
+    let disk_id = disk.as_ref().map(|d| {
+        format!("disk-{}", &uuid::Uuid::new_v4().to_string()[..8])
+    });
+
     let mut state = VmState {
         id:            id.clone(),
         name:          req.name.clone(),
@@ -109,7 +116,14 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
         mem_mib,
         node_name:     node_name.to_string(),
         kernel:        kernel.clone(),
-        disk:          req.disk.clone(),
+        initrd:        Some(initrd.clone()),
+        disk:          disk.clone(),
+        disk_id,
+        base_image:    disk.clone(),
+        ip:            None,
+        tap:           Some(tap_name.clone()),
+        pty:           None,
+        net_mode:      Some(net_mode.clone()),
         mac:           mac.clone(),
         uplink:        uplink.clone(),
         labels:        req.labels.unwrap_or_default(),
@@ -128,15 +142,10 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
         cl.clone()
     } else if !ip_config.is_empty() {
         format!(
-            "console=ttyS0,115200 reboot=k panic=1 nomodules \
-             virtio_mmio.device=0x1000@0xd0000000:5 \
-             virtio_mmio.device=0x1000@0xd0010000:6 \
-             {ip_config} nameserver=1.1.1.1"
+            "earlycon=uart8250,io,0x3f8,115200n8 console=ttyS0,115200 rw reboot=k panic=1              virtio_mmio.device=0x1000@0xd0010000:6              {ip_config} nameserver=1.1.1.1"
         )
     } else {
-        "console=ttyS0,115200 reboot=k panic=1 nomodules \
-         virtio_mmio.device=0x1000@0xd0000000:5 \
-         virtio_mmio.device=0x1000@0xd0010000:6".to_string()
+        "earlycon=uart8250,io,0x3f8,115200n8 console=ttyS0,115200 root=/dev/vda rootfstype=ext4 rw reboot=k panic=1 virtio_mmio.device=0x1000@0xd0010000:6".to_string()
     };
 
     // 4. Spawn caiman-vmm with correct TAP
@@ -147,18 +156,78 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
         .arg("--tap").arg(&tap_name)
         .arg("--uplink").arg(&uplink)
         .arg("--vm-id").arg(&id)
+        .arg("--vm-name").arg(&req.name)
         .arg("--cmdline").arg(&cmdline);
 
-    if let Some(ref disk) = req.disk {
+    cmd.arg("--initrd").arg(&initrd);
+    if let Some(ref disk) = disk {
         cmd.arg("--disk").arg(disk);
     }
 
+    // Create PTY for serial console -- gives shell a real TTY
     let log_path = format!("{STATE_DIR}/{id}.log");
-    let log_file = std::fs::File::create(&log_path)
-        .with_context(|| format!("creating log {log_path}"))?;
-    let log_stderr = log_file.try_clone()?;
+    let err_path = format!("{STATE_DIR}/{id}.vmm.log");
+    let log_stderr = std::fs::File::create(&err_path)
+        .with_context(|| format!("creating vmm log {err_path}"))?;
 
-    cmd.stdout(log_file).stderr(log_stderr).kill_on_drop(false);
+    // Open PTY master/slave
+    let pty_master = std::fs::OpenOptions::new()
+        .read(true).write(true)
+        .open("/dev/ptmx")
+        .context("opening /dev/ptmx")?;
+
+    // Grant and unlock PTY
+    unsafe {
+        let fd = std::os::unix::io::AsRawFd::as_raw_fd(&pty_master);
+        libc::grantpt(fd);
+        libc::unlockpt(fd);
+        // Get slave PTY name and save it
+        let slave_name = std::ffi::CStr::from_ptr(libc::ptsname(fd)).to_str().unwrap_or("").to_string();
+        std::fs::write(&log_path, format!("PTY:{}
+", slave_name))
+            .with_context(|| format!("writing pty path to {log_path}"))?;
+        // Save pty master fd for WebSocket streaming
+        let pty_link = format!("{STATE_DIR}/{id}.pty");
+        let _ = std::os::unix::fs::symlink(&slave_name, &pty_link);
+        // Store PTY path -- will be saved to state after spawn
+    }
+
+    // Use PTY slave as stdout for VMM
+    let pty_slave = {
+        let fd = std::os::unix::io::AsRawFd::as_raw_fd(&pty_master);
+        let slave_name = unsafe {
+            std::ffi::CStr::from_ptr(libc::ptsname(fd)).to_str().unwrap_or("/dev/null").to_string()
+        };
+        std::fs::OpenOptions::new().read(true).write(true).open(&slave_name)
+            .unwrap_or_else(|_| std::fs::File::create("/dev/null").unwrap())
+    };
+    let pty_slave2 = pty_slave.try_clone()?;
+
+    cmd.stdout(pty_slave).stderr(log_stderr).stdin(pty_slave2).kill_on_drop(false).process_group(0);
+
+    // Save PTY master for log streaming
+    {
+        let pty_log = format!("{STATE_DIR}/{id}.log");
+        let mut master = pty_master;
+        tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let std_master = unsafe {
+                use std::os::unix::io::FromRawFd;
+                let fd = std::os::unix::io::IntoRawFd::into_raw_fd(master);
+                std::fs::File::from_raw_fd(fd)
+            };
+            let mut async_master = tokio::fs::File::from_std(std_master);
+            let mut log = tokio::fs::OpenOptions::new().create(true).append(true)
+                .open(&pty_log).await.unwrap();
+            let mut buf = [0u8; 1024];
+            loop {
+                match async_master.read(&mut buf).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => { let _ = log.write_all(&buf[..n]).await; }
+                }
+            }
+        });
+    }
 
     let child = cmd.spawn()
         .with_context(|| format!("spawning {VMM_BINARY}"))?;
@@ -168,7 +237,14 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
 
     state.status     = VmStatus::Running;
     state.pid        = Some(pid);
+    state.pty        = Some(format!("{STATE_DIR}/{id}.pty"));
     state.started_at = Some(Utc::now());
+    // Extract IP from ip_config
+    if !ip_config.is_empty() {
+        state.ip = ip_config.splitn(2, '=').nth(1)
+            .and_then(|s| s.splitn(2, ':').next())
+            .map(|s| s.to_string());
+    }
     state.save()?;
 
     std::mem::forget(child);

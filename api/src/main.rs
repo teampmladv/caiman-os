@@ -159,7 +159,7 @@ async fn start_vm_h(Path(id): Path<String>) -> impl IntoResponse {
     let req = CreateVmRequest {
         name: state.name, cpus: Some(state.cpus),
         mem_mib: Some(state.mem_mib), kernel: Some(state.kernel),
-        disk: state.disk, uplink: Some(state.uplink),
+        initrd: None, disk: state.disk, uplink: Some(state.uplink),
         cmdline: None, labels: Some(state.labels), net_mode: None,
     };
     let hostname = sysinfo::System::host_name().unwrap_or_else(|| "node".into());
@@ -277,7 +277,10 @@ async fn main() {
             .layer(cors);
 
         info!("DEMO MODE -- listening on {addr}");
-        let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+        let listener = match tokio::net::TcpListener::bind(addr).await {
+            Ok(l) => l,
+            Err(e) => { eprintln!("Failed to bind {addr}: {e}"); std::process::exit(1); }
+        };
         axum::serve(listener, app).await.unwrap();
 
     } else {
@@ -305,7 +308,10 @@ async fn main() {
             .layer(cors);
 
         info!("PRODUCTION MODE -- listening on {addr}");
-        let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+        let listener = match tokio::net::TcpListener::bind(addr).await {
+            Ok(l) => l,
+            Err(e) => { eprintln!("Failed to bind {addr}: {e}"); std::process::exit(1); }
+        };
         axum::serve(listener, app).await.unwrap();
     }
 }

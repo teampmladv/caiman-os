@@ -139,6 +139,28 @@ export function AppProvider({ children }) {
     setTimeout(() => setToast(null), 3000)
   }
 
+  // ── Auto-refresh JWT token before expiry ───────────────────────────────
+  const refreshToken = async () => {
+    const cluster = getActiveCluster()
+    if (!cluster) return
+    try {
+      const res = await fetch(`${cluster.url}/auth/refresh`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${cluster.token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const clusters = loadClusters()
+        saveClusters(clusters.map(c => c.id === cluster.id ? { ...c, token: data.token } : c))
+      }
+    } catch {}
+  }
+
+  useEffect(() => {
+    const interval = setInterval(refreshToken, 1000 * 60 * 60) // cada hora
+    return () => clearInterval(interval)
+  }, [])
+
   // ── Fetch real data from active cluster ──────────────────────────────
   const fetchClusterData = async () => {
     const cluster = getActiveCluster()

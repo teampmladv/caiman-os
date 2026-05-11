@@ -37,12 +37,14 @@ struct Args {
     #[arg(long, default_value = "eth0")] uplink:  String,
     #[arg(long, default_value = "tap0")] tap:     String,
     #[arg(long, default_value = "1")]    vm_id:   String,
+    #[arg(long, default_value = "")]       vm_name: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
         .init();
     let args = Args::parse();
     info!("caiman-vmm v{} -- vm_id={} mem={}MiB cpus={}", env!("CARGO_PKG_VERSION"), args.vm_id, args.mem_mib, args.cpus);
@@ -117,11 +119,7 @@ async fn run(args: Args) -> Result<()> {
 
     info!("VM running:");
     println!("-----------------------------------------------------");
-    eprintln!("[DEBUG] writing vm state for {}", args.vm_id);
-    eprintln!("CAIMAN: writing state for vm_id={}", args.vm_id);
     write_vm_state(&args, std::process::id());
-    eprintln!("CAIMAN: state written");
-    eprintln!("[DEBUG] vm state written");
 
     // Put terminal in raw mode so stdin goes directly to serial
     let _raw = {
@@ -205,7 +203,7 @@ fn write_vm_state(args: &Args, pid: u32) {
     let now = chrono::Utc::now().to_rfc3339();
     let state = serde_json::json!({
         "id":          args.vm_id,
-        "name":        args.vm_id,
+        "name":        if args.vm_name.is_empty() { args.vm_id.clone() } else { args.vm_name.clone() },
         "status":      "RUNNING",
         "pid":         pid,
         "cpus":        args.cpus,
