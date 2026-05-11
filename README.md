@@ -1,172 +1,150 @@
-<div align="center">
-
-```
-🐊 CAIMÁN OS
-```
-
 # 🐊 Caimán OS
 
 **Open-source hyperconverged infrastructure without QEMU.**
 
 [![CI](https://github.com/teampmladv/caiman-os/actions/workflows/ci.yml/badge.svg)](https://github.com/teampmladv/caiman-os/actions)
-[![Release](https://img.shields.io/badge/release-v1.2.0-22c55e)](https://github.com/teampmladv/caiman-os/releases)
+![Status](https://img.shields.io/badge/status-alpha-orange)
 [![License](https://img.shields.io/badge/license-Apache%202.0-22c55e)](LICENSE)
 [![Demo](https://img.shields.io/badge/demo-live-22c55e)](https://caimanos.com)
-[![Docs](https://img.shields.io/badge/docs-caimanos.com-22c55e)](https://caimanos.com)
-[![ISO](https://img.shields.io/badge/ISO-88MB-22c55e)](https://github.com/teampmladv/caiman-os/releases/tag/v1.2.0)
 
-[**Live Demo**](https://caimanos.com) · [**Documentation**](docs/) · [**Install**](#-install) · [**API Reference**](docs/api/rest.md)
-
-</div>
+[**Live Demo**](https://caimanos.com) · [**Documentation**](./docs) · [**Install**](#install)
 
 ---
 
-## What's new in v1.2.0
-
-- **JWT multi-cluster auth** — connect multiple clusters from a single UI, roles: `read-only / operator / admin`
-- **caiman-cni v2** — automatic NAT/bridge/isolated networking, built-in IPAM, auto-detects uplink
-- **Import engine** — migrate VMs from Proxmox, vSphere, AWS, OpenStack, oVirt, Nutanix, Oracle VM
-- **ISO installer v1.2.0** — 88MB bootable ISO, auto-network detection, generates JWT token on screen
-- **ARM support** — runs on Raspberry Pi 4, Mac Mini M1, any aarch64 hardware
+> **Project status: Alpha (v0.x).**
+> The VMM, REST API, and UI are functional and run real VMs without QEMU.
+> Higher-level subsystems (distributed storage, live migration, DRS, GPU,
+> micro-segmentation, backup) are in active development — most exist today
+> as designed scaffolding (types, REST routes, algorithm sketches) and need
+> further implementation before reaching the performance targets below.
+> Pre-1.0 = breaking changes expected.
 
 ---
 
 ## What is Caimán OS?
 
-Caimán OS is a **hyperconverged infrastructure (HCI) platform** that collapses compute, storage, and networking into a single software stack running on commodity x86 hardware — without QEMU, without a SAN, without a separate network controller.
+Caimán OS is a **hyperconverged infrastructure (HCI) platform under
+active development** that aims to collapse compute, storage, and networking
+into a single Rust codebase running on commodity x86 hardware — without
+QEMU, without a SAN, without a separate network controller.
 
-Traditional infrastructure runs three separate systems:
-
-```
-Traditional (3 vendors, 3 licenses, 3 teams)     Caimán OS (1 platform, 0 licenses)
-─────────────────────────────────────────         ─────────────────────────────────
- [VMware vSphere]  [NetApp / Pure]  [Cisco]   →   [Caimán OS]   one codebase
-     Compute          Storage       Network             HCI       one team
-```
-
-The key technical difference from all other HCI solutions: **no QEMU**. Caimán's VMM speaks directly to `/dev/kvm` via ioctls in Rust. This eliminates 250MB of process overhead per VM and achieves network latency of 8µs through XDP zero-copy.
+The key technical bet is **no QEMU**: Caimán's VMM speaks directly to
+`/dev/kvm` via ioctls in Rust. The current VMM is ~5K lines of Rust and
+boots Linux 6.6 on AMD bare metal in ~1.3 seconds. This is the part that
+exists and works today.
 
 ---
 
-## Hyperconverged architecture
+## What works today (v0.x alpha)
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  Interfaces   │  caiman-ui   │  caiman CLI  │  REST API / Terraform     │
-├───────────────┴──────────────┴──────────────┴───────────────────────────┤
-│  Control      │  caiman-api  │  caiman-mcp  │  Prometheus · Grafana     │
-├───────────────┬──────────────┬──────────────┬───────────────────────────┤
-│  Services     │ DRS σ-sched  │  Live migr.  │  BTS · GPU passthrough    │
-├───────────────┼──────────────┼──────────────┤───────────────────────────┤
-│  HCI core     │  Compute     │  Storage     │  Networking               │
-│               │  caiman-vmm  │  VSAN/vVols  │  XDP + caiman_net.ko      │
-│               │  no QEMU     │  NVMe-oF     │  <8µs, micro-seg <5µs     │
-├───────────────┴──────────────┴──────────────┴───────────────────────────┤
-│  Kernel       │  KVM subsystem + caiman_net.ko (XDP eBPF)               │
-├───────────────┴─────────────────────────────────────────────────────────┤
-│  Hardware     │  Commodity x86 · NVMe · 25/100GbE NIC · NVIDIA GPU     │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+| Component | State | Notes |
+|---|---|---|
+| **caiman-vmm** (KVM without QEMU) | works | Linux 6.6 boots in ~1.3s; virtio-blk + virtio-net + serial console |
+| **caiman-api** (REST + JWT + WebSocket) | works | Single-node lifecycle: create / start / stop / delete / console |
+| **caiman-ui** (React dashboard) | works | VM management, interactive xterm console, import wizard |
+| **caiman-cni** (NAT + bridge) | works | Per-VM TAP, basic NAT to host |
+| **Import wizard** | partial | UI supports 9 sources; Proxmox / vSphere / oVirt / Nutanix / Oracle backends call real APIs to discover. Disk conversion is stubbed. |
+| **caiman-drs** | scaffolding | sigma-balancer algorithm + Kubernetes extender protocol in place; needs multi-node testing |
+| **caiman-storage** | scaffolding | VSAN / vVols types + REST API defined; replication and data path not implemented |
+| **caiman-livemig** | scaffolding | Pre-copy protocol designed; dirty-page tracking and full transfer not yet implemented |
+| **caiman-gpu** | partial | VFIO passthrough flow present; NVIDIA MIG / vGPU code is skeleton |
+| **caiman-microseg** | partial | Policy compiler (labels -> BPF map entries); BPF program not yet attached in production |
+| **caiman-bts** | scaffolding | Snapshot / backup / template REST routes defined; storage backend not implemented |
+| **caiman_net.ko** (XDP) | skeleton | Module structure in place; XDP program not finalized |
+| **Live migration < 200ms** | target | Goal — not measured yet |
+| **8us network latency** | target | Goal — not measured yet |
+| **Bootable ISO** | in progress | Earlier ISOs published; current rebuild for v0.x in progress |
+
+works = functional today · partial = partially working · scaffolding = designed but not implemented · skeleton = stub · target = stated goal
+
+---
+
+## Why no QEMU?
+
+QEMU is a brilliant emulator covering 30+ architectures, dozens of devices,
+and decades of compatibility. Caimán does not need most of that. We support:
+
+- One architecture (x86_64)
+- Modern KVM-only acceleration (no software emulation fallback)
+- A small fixed set of devices (16550 UART, virtio-blk, virtio-net)
+
+The result is a VMM in roughly 5,000 lines of Rust instead of hundreds of
+thousands of lines of C. The trade-off is intentional: less compatibility,
+more auditability and a smaller attack surface.
+
+---
+
+## Performance targets (not yet measured at scale)
+
+Stated targets the project is built toward. Real benchmarks will be
+published as features land and stabilize.
+
+| Metric | Target | Status |
+|---|---|---|
+| VM boot time (Alpine) | < 500ms | ~1.3s measured today |
+| VMM binary size | < 5 MB | 1.8 MB in earlier builds; current binary larger |
+| Network latency (XDP) | < 10us | Goal — XDP module not yet finalized |
+| Live migration blackout | < 1s | Goal — pre-copy not yet implemented end-to-end |
+| Micro-segmentation overhead | < 10us | Goal — BPF program not yet attached |
+
+Please do not quote these as benchmarks — they are stated design goals.
 
 ---
 
 ## Comparison vs. the market
 
-| Feature | **Caimán OS** | VMware vSphere | Nutanix AHV | Proxmox VE | Microsoft Hyper-V |
-|---|:---:|:---:|:---:|:---:|:---:|
-| **License cost** | **$0** | $4K–$10K/socket/yr | $8K–$15K/socket/yr | $0 / $200/yr support | Included with Windows |
-| **QEMU dependency** | **None** | N/A (ESXi) | Yes | Yes | N/A (Hyper-V) |
-| **VMM memory / VM** | **1.8 MB** | ~250 MB | ~200 MB | ~250 MB | ~200 MB |
-| **Network latency P50** | **8µs** | ~100µs | ~80µs | ~100µs | ~120µs |
-| **Live migration** | **<200ms** | 1–5s | 1–3s | 2–10s | 2–8s |
-| **Micro-segmentation** | **5µs (XDP)** | ~50µs (NSX-T) | ~30µs (Flow) | Manual iptables | ~80µs |
-| **Distributed storage** | **VSAN built-in** | vSAN (+$$$) | Nutanix DSF | Ceph (separate) | Storage Spaces |
-| **GPU passthrough** | **VFIO + MIG + vGPU** | Partial | Partial | VFIO only | DDA only |
-| **AI/MCP integration** | **Native** | None | None | None | None |
-| **Kubernetes native** | **Built-in CNI + scheduler** | Tanzu ($$$) | Karbon ($$$) | None | AKS HCI ($$$) |
-| **Open source** | **Apache 2.0** | Proprietary | Proprietary | AGPL | Proprietary |
-| **Single-command install** | **Yes** | No (ISO + UI) | No (ISO + wizard) | Yes (Debian-based) | No (Windows Server) |
+Honest version. Caimán is early-stage; established platforms are mature,
+battle-tested, and have ecosystems we do not have yet.
 
-### vs. OpenStack / CloudStack
+|  | **Caimán OS (alpha)** | Proxmox VE | vSphere | Nutanix AHV | Harvester |
+|---|---|---|---|---|---|
+| Stability | alpha | GA, ~15 years | GA, ~20 years | GA, ~10 years | GA, ~3 years |
+| Distributed storage | planned | external Ceph | vSAN | DSF | Longhorn |
+| Live migration | planned | yes | yes (vMotion) | yes | yes |
+| HA / auto-failover | planned | yes | yes | yes | yes |
+| Backup / DR | planned | PBS | SRM | Mine | external |
+| GPU MIG / vGPU | partial | passthrough | yes | yes | passthrough |
+| Multi-tenant / SSO | planned | LDAP / SAML | AD / SAML | AD | OIDC |
+| Open source | Apache 2.0 | GNU AGPL | proprietary | proprietary | Apache 2.0 |
+| No QEMU | **yes** | no | n/a | no | no |
+| Single Rust codebase | **yes** | mixed | proprietary | proprietary | Go + k8s |
 
-| Feature | **Caimán OS** | OpenStack | CloudStack |
-|---|:---:|:---:|:---:|
-| Install time | **5 min** | 1–3 days | 4–8 hours |
-| Operational complexity | **Low** | Very high | Medium |
-| KVM without QEMU | **Yes** | No (libvirt+QEMU) | No (libvirt+QEMU) |
-| HCI (built-in storage + net) | **Yes** | No (Cinder+Neutron separate) | Partial |
-| Live migration latency | **<200ms** | ~1–5s | ~2–8s |
-| Single binary per component | **Yes** (1.8–4.5 MB) | No (Python services) | No (Java services) |
+The "no QEMU, single Rust codebase" column is what makes Caimán worth
+building. Everything else needs to be earned through implementation.
 
 ---
-
-## Performance numbers
-
-All benchmarks on a single node: AMD EPYC 7443P, 256 GiB RAM, 2× Samsung PM9A3 NVMe, Mellanox ConnectX-6 100GbE.
-
-| Metric | Result | Comparison |
-|--------|--------|------------|
-| VM boot time | 380ms | vs. vSphere ~8s |
-| Network latency P50 | **8µs** | vs. QEMU/OVS ~100µs |
-| Micro-segmentation latency | **5µs** | vs. NSX-T ~50µs |
-| Live migration blackout | **<200ms** | vs. vMotion 1–5s |
-| VMs per host (512 MiB each) | 480 | vs. QEMU stack ~180 |
-| Storage throughput (NVMe-oF) | 3.2 GB/s | — |
-| XDP packet rate | 14.8 Mpps | — |
-| VMM binary size | **1.8 MB** | vs. QEMU 250 MB |
-
----
-
-## Download ISO
-
-**Caimán OS v1.2.0 — 88MB** (vs ESXi 350MB, Proxmox 1.2GB)
-
-| File | Size | SHA256 |
-|------|------|--------|
-| [caiman-os-1.2.0-x86_64.iso](https://github.com/teampmladv/caiman-os/releases/download/v1.1.0/caiman-os-1.2.0-x86_64.iso) | 88 MB | `178f5c71...b45dfde` |
-
-```bash
-# Flash to USB
-dd if=caiman-os-1.2.0-x86_64.iso of=/dev/sdX bs=4M status=progress
-
-# Test with QEMU
-qemu-system-x86_64 -cdrom caiman-os-1.2.0-x86_64.iso -m 4G -enable-kvm
-
-# Or install with one command (on existing Linux)
-curl -fsSL https://caimanos.com/install.sh | sudo bash
-```
 
 ## Install
 
+> Alpha software — not for production. Run on a test host.
+
 ```bash
 curl -fsSL https://caimanos.com/install.sh | sudo bash
 ```
 
-**Requirements:** x86_64 · VT-x or AMD-V · CentOS 8+ / Ubuntu 22.04+ / Debian 12+ · 4 GiB RAM minimum
+**Requirements:** x86_64 · VT-x / AMD-V · CentOS 8+ / Ubuntu 22.04+ /
+Debian 12+ · 4 GiB RAM minimum.
 
-See the [Installation Guide](docs/operations/install.md) for manual install, PXE, and BMC provisioning.
+See [docs/operations/install.md](./docs/operations/install.md) for manual
+install.
 
 ---
 
 ## Quick start
 
 ```bash
-# Create your first VM
+# Get an auth token (default admin/admin123 -- change this!)
+TOKEN=$(curl -s -X POST http://localhost:8765/auth/token \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123"}' | jq -r .token)
+
+# Create a VM
 curl -X POST http://localhost:8765/api/vms \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"name":"web-01","cpus":2,"memMib":512,"kernel":"/var/lib/caiman/vmlinuz"}'
+  -d '{"name":"web-01","cpus":1,"memMib":256}'
 
-# Create a storage volume (VSAN)
-curl -X POST http://localhost:8765/api/volumes \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"pgdata","sizeGib":100,"policy":"performance"}'
-
-# CLI
-caiman vm list
-caiman cluster status
-caiman drs status
-
-# Dashboard
+# Open the dashboard
 open http://localhost:3000
 ```
 
@@ -174,90 +152,47 @@ open http://localhost:3000
 
 ## Components
 
-| Component | Binary | Size | Port | Description |
-|-----------|--------|------|------|-------------|
-| [vmm/](vmm/) | `caiman-vmm` | 1.8 MB | — | KVM VMM without QEMU |
-| [api/](api/) | `caiman-api` | 2.2 MB | 8765 | REST API + WebSocket |
-| [storage/](storage/) | `caiman-storage` | 1.4 MB | 8770 | VSAN + vVols storage |
-| [cni/](cni/) | `caiman-cni` | 1.1 MB | — | CNI plugin |
-| [drs/](drs/) | `caiman-drs` | 4.5 MB | 8766 | Distributed Resource Scheduler |
-| [bts/](bts/) | `caiman-bts` | 332 KB | 8768 | Backup + Templates + Snapshots |
-| [livemig/](livemig/) | `caiman-livemig` | 980 KB | 7777 | Live migration |
-| [gpu/](gpu/) | `caiman-gpu` | 1.2 MB | 8769 | GPU passthrough + MIG + vGPU |
-| [mcp/](mcp/) | `caiman-mcp` | 1.1 MB | 8767 | AI / MCP server |
-| [cli/](cli/) | `caiman` | 3.1 MB | — | Terminal CLI |
-| [ui/](ui/) | (nginx) | 552 KB | 3000 | React dashboard |
-| [kernel/](kernel/) | `caiman_net.ko` | — | — | XDP kernel module |
-
----
-
-## Docker Compose
-
-```bash
-git clone https://github.com/teampmladv/caiman-os
-cd caiman-os
-docker compose up -d
-
-# Services:
-# Dashboard:  http://localhost:3000
-# API:        http://localhost:8765
-# Grafana:    http://localhost:3001  (admin/caiman)
-```
-
----
-
-## OCI images
-
-All images at `ghcr.io/teampmladv/` — Apache 2.0, publicly accessible:
-
-```bash
-docker pull ghcr.io/teampmladv/caiman-api:1.0.0    # 2.2 MB
-docker pull ghcr.io/teampmladv/caiman-vmm:1.0.0    # 1.8 MB
-docker pull ghcr.io/teampmladv/caiman-storage:1.0.0 # 1.4 MB
-docker pull ghcr.io/teampmladv/caiman-drs:1.0.0    # 4.5 MB
-docker pull ghcr.io/teampmladv/caiman-gpu:1.0.0    # 1.2 MB
-docker pull ghcr.io/teampmladv/caiman-ui:1.0.0     # 552 KB
-```
-
----
-
-## Documentation
-
-| Guide | Description |
-|-------|-------------|
-| [Architecture overview](docs/architecture/overview.md) | HCI design, component diagram, data flows |
-| [Hyperconvergence](docs/architecture/hyperconvergence.md) | What HCI means in Caimán OS, comparison with vSAN/Nutanix |
-| [VMM internals](docs/architecture/vmm.md) | How caiman-vmm works without QEMU |
-| [XDP networking](docs/architecture/networking.md) | caiman_net.ko, XDP < 8µs, micro-segmentation |
-| [Live migration](docs/architecture/livemig.md) | Pre-copy algorithm, BPF map transfer, <200ms |
-| [ISO Installation](docs/operations/iso.md) | Bootable ISO — flash to USB, TUI installer |
-| [Installation guide](docs/operations/install.md) | Bare metal, VPS, PXE, iDRAC/BMC |
-| [API reference](docs/api/rest.md) | All REST endpoints with examples |
-| [Development setup](docs/development/setup.md) | Build from source, run tests |
-| [Contributing](CONTRIBUTING.md) | How to contribute |
-| [Security](SECURITY.md) | Vulnerability reporting |
-| [Changelog](CHANGELOG.md) | Version history |
+| Component | State | Description |
+|---|---|---|
+| [vmm/](./vmm) | works | KVM VMM without QEMU |
+| [api/](./api) | works | REST API + WebSocket + JWT |
+| [ui/](./ui) | works | React dashboard, xterm console |
+| [cni/](./cni) | works | NAT + bridge networking |
+| [drs/](./drs) | scaffolding | DRS scheduler (k8s extender) |
+| [storage/](./storage) | scaffolding | VSAN + vVols (designed, not implemented) |
+| [livemig/](./livemig) | scaffolding | Pre-copy live migration (designed) |
+| [gpu/](./gpu) | partial | VFIO passthrough; MIG / vGPU stubs |
+| [microseg/](./microseg) | partial | Policy compiler; BPF program stub |
+| [bts/](./bts) | scaffolding | Backup + Templates + Snapshots |
+| [mcp/](./mcp) | stub | AI / MCP server |
+| [cli/](./cli) | partial | Terminal CLI |
+| [kernel/](./kernel) | skeleton | XDP module (caiman_net.ko) |
 
 ---
 
 ## Roadmap
 
-- [x] v0.1–v0.6 · KVM VMM, serial, virtio-net, virtio-blk, REST API
-- [x] v0.7.0 · Live migration pre-copy < 200ms
-- [x] v0.8.0 · GPU passthrough + NVIDIA MIG + vGPU
-- [x] v0.9.0 · VSAN distributed storage + vVols
-- [x] **v1.0.0 · Production GA**
-- [x] **v1.1.0 · Bootable ISO** ← current
-- [ ] v1.2.0 · Multi-cluster federation
-- [ ] v1.2.0 · Terraform provider + Ansible collection
-- [ ] v1.3.0 · eBPF service mesh (no Envoy/Istio)
-- [ ] v2.0.0 · Caimán Cloud (SaaS managed HCI)
+- [x] **v0.1–v0.6** · KVM VMM, virtio-net / blk, REST API, console
+- [x] **v0.7** · Web UI with interactive xterm console
+- [x] **v0.8** · Import wizard (Proxmox / vSphere / oVirt / Nutanix / Oracle / OpenStack / Harvester / libvirt / AWS)
+- [x] **v0.9 (current)** · Authentication, VM lifecycle, single-node production-ready
+- [ ] **v1.0** · LVM thin-pool local storage with snapshots; PAM auth; ISO rebuild
+- [ ] **v1.1** · Cluster federation (3+ nodes, gossip + Raft consensus)
+- [ ] **v1.2** · Caimán Storage (vSAN-style distributed block storage)
+- [ ] **v1.3** · Live migration end-to-end (pre-copy, < 1s blackout)
+- [ ] **v1.4** · HA / auto-failover · DRS active across nodes
+- [ ] **v1.5** · XDP networking finalized · micro-segmentation enforcing
+- [ ] **v2.0** · First stable release · production claims with measured benchmarks
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). All contributions welcome — from bug fixes to new storage backends and hardware support.
+This is an ambitious, early-stage project and contributions are very
+welcome — especially in storage, networking, and live migration.
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md). Start by reading the relevant
+component README to understand current state vs. designed state.
 
 ```bash
 git clone https://github.com/teampmladv/caiman-os
@@ -269,66 +204,10 @@ cd ui && npm install && npm run dev
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE)
-
-Enterprise features (multi-tenant, SSO, billing, SLA support) available under a commercial license. Contact us at [team@caimanos.com](mailto:team@caimanos.com).
+Apache 2.0 — see [LICENSE](./LICENSE)
 
 ---
 
-<div align="center">
+**Named after the Cuban crocodile 🐊**
 
-**Named after the Cuban crocodile 🐊 · Built for the cloud ☁️**
-
-[caimanos.com](https://caimanos.com) · [GitHub](https://github.com/teampmladv/caiman-os) · [Releases](https://github.com/teampmladv/caiman-os/releases)
-
-</div>
-
----
-
-## 📦 Distribution
-
-### ISO (recommended — works on any PC)
-
-```bash
-# Download
-wget https://github.com/teampmladv/caiman-os/releases/download/v1.2.0/caiman-os-1.2.0-x86_64.iso
-
-# Flash to USB
-dd if=caiman-os-1.2.0-x86_64.iso of=/dev/sdX bs=4M status=progress
-
-# Test with QEMU
-qemu-system-x86_64 -cdrom caiman-os-1.2.0-x86_64.iso -m 4G -enable-kvm
-```
-
-Boot from USB → select "Install Caimán OS" → follow the installer.
-The installer auto-detects network, configures NAT for VMs, and prints your admin token on screen.
-
-### One-line installer (existing Linux)
-
-```bash
-curl -sSL https://caimanos.com/install.sh | bash
-```
-
-Supports: Ubuntu 20.04+, Debian 11+, CentOS 8+, Alpine 3.18+
-
-### Docker
-
-```bash
-docker run -d --name caiman \
-  --device /dev/kvm \
-  --cap-add NET_ADMIN \
-  -p 8765:8765 \
-  -e CAIMAN_JWT_SECRET=your-secret \
-  ghcr.io/teampmladv/caiman-api:1.2.0
-```
-
-### Hardware requirements
-
-| | Minimum | Recommended |
-|---|---|---|
-| CPU | x86_64 or aarch64, 2 cores | 8+ cores with VT-x/AMD-V |
-| RAM | 2 GiB | 16 GiB |
-| Disk | 20 GB | 500 GB NVMe |
-| Network | 100 Mbps | 1 GbE+ |
-
-Works on: recycled PCs, Mac Mini, ThinkPad, Raspberry Pi 4, bare metal servers.
+[caimanos.com](https://caimanos.com) · [GitHub](https://github.com/teampmladv/caiman-os)
