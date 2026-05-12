@@ -29,7 +29,7 @@ mod demo;
 
 use demo::state::{DemoStore, SharedDemo};
 use vm::state::{VmState, VmStatus};
-use vm::runner::{CreateVmRequest, spawn_vm, stop_vm, kill_vm, delete_vm};
+use vm::runner::{CreateVmRequest, spawn_vm, restart_vm, stop_vm, kill_vm, delete_vm};
 use node::metrics::NodeMetrics;
 
 fn is_demo() -> bool {
@@ -153,17 +153,8 @@ async fn stop_vm_h(Path(id): Path<String>) -> impl IntoResponse {
 }
 
 async fn start_vm_h(Path(id): Path<String>) -> impl IntoResponse {
-    let Ok(state) = VmState::load(&id) else {
-        return err(StatusCode::NOT_FOUND, "not found").into_response();
-    };
-    let req = CreateVmRequest {
-        name: state.name, cpus: Some(state.cpus),
-        mem_mib: Some(state.mem_mib), kernel: Some(state.kernel),
-        initrd: None, disk: state.disk, uplink: Some(state.uplink),
-        cmdline: None, labels: Some(state.labels), net_mode: None,
-    };
     let hostname = sysinfo::System::host_name().unwrap_or_else(|| "node".into());
-    match spawn_vm(req, &hostname).await {
+    match restart_vm(&id, &hostname).await {
         Ok(s)  => ok(s).into_response(),
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
@@ -181,7 +172,7 @@ async fn force_stop_h(Path(id): Path<String>) -> impl IntoResponse {
 
 async fn delete_vm_h(Path(id): Path<String>) -> impl IntoResponse {
     if let Ok(mut s) = VmState::load(&id) {
-        if s.status == VmStatus::Running { let _ = kill_vm(&mut s); }
+        if s.status == VmStatus::Active { let _ = kill_vm(&mut s); }
     }
     match delete_vm(&id) {
         Ok(_)  => (StatusCode::NO_CONTENT, "").into_response(),
@@ -252,7 +243,8 @@ async fn main() {
     let public = Router::new()
         .route("/health",          get(health))
         .route("/auth/bootstrap",  post(auth::bootstrap_token))
-        .route("/auth/token",      post(auth::generate_token));
+        .route("/auth/token",      post(auth::generate_token))
+        .route("/api/vms/:id/console/ws", get(vm_console_ws));
 
     if demo_mode {
         let store: SharedDemo = Arc::new(RwLock::new(DemoStore::new()));
@@ -293,7 +285,6 @@ async fn main() {
             .route("/api/vms/:id/stop",               post(stop_vm_h))
             .route("/api/vms/:id/force-stop",         post(force_stop_h))
             .route("/api/vms/:id/console",            get(vm_logs))
-            .route("/api/vms/:id/console/ws",         get(vm_console_ws))
             .route("/api/vms/:id/migrate",            post(migrate_vm))
             .route("/api/nodes",                      get(get_nodes_real))
             .route("/api/cluster",                    get(get_cluster_real))
@@ -326,42 +317,46 @@ async fn vm_console_ws(
 
 async fn handle_console(mut socket: axum::extract::ws::WebSocket, id: String) {
     use axum::extract::ws::Message;
-    use tokio::io::AsyncBufReadExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    let log_path = format!("/var/run/caiman/{id}.log");
+    let sock_path = format!("/var/lib/caiman/vms/{id}/console.sock");
 
-    if let Ok(content) = std::fs::read_to_string(&log_path) {
-        for line in content.lines() {
-            if socket.send(Message::Text(line.to_string().into())).await.is_err() {
-                return;
-            }
+    let stream = match tokio::net::UnixStream::connect(&sock_path).await {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = socket.send(Message::Text(
+                format!("[console] not available: {e}").into()
+            )).await;
+            return;
         }
-    }
-
-    let Ok(file) = tokio::fs::File::open(&log_path).await else {
-        let _ = socket.send(Message::Text("[console] Log not available".into())).await;
-        return;
     };
 
-    let mut reader = tokio::io::BufReader::new(file);
-    let mut line = String::new();
+    let (mut unix_rx, mut unix_tx) = tokio::io::split(stream);
+    let mut buf = [0u8; 1024];
 
     loop {
-        line.clear();
-        match reader.read_line(&mut line).await {
-            Ok(0) => {
-                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                if socket.send(Message::Ping(vec![].into())).await.is_err() {
-                    break;
+        tokio::select! {
+            result = unix_rx.read(&mut buf) => {
+                match result {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        if socket.send(Message::Binary(buf[..n].to_vec().into())).await.is_err() { break; }
+                    }
                 }
             }
-            Ok(_) => {
-                let msg = line.trim_end_matches('\n').to_string();
-                if socket.send(Message::Text(msg.into())).await.is_err() {
-                    break;
+            msg = socket.recv() => {
+                match msg {
+                    None => break,
+                    Some(Ok(Message::Binary(data))) => {
+                        if unix_tx.write_all(&data).await.is_err() { break; }
+                    }
+                    Some(Ok(Message::Text(text))) => {
+                        if unix_tx.write_all(text.as_bytes()).await.is_err() { break; }
+                    }
+                    Some(Err(_)) => break,
+                    _ => {}
                 }
             }
-            Err(_) => break,
         }
     }
 }

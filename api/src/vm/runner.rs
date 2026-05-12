@@ -2,6 +2,9 @@
 //! v1.1.0: integra caiman-cni para red automatica (NAT/bridge)
 
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::os::unix::process::CommandExt;
+use std::os::unix::fs::OpenOptionsExt;
 use anyhow::{Context, Result};
 use tokio::process::Command;
 use tracing::{info, warn};
@@ -16,12 +19,13 @@ pub const CNI_BINARY: &str = "caiman-cni";
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateVmRequest {
-    pub name:      String,
-    pub cpus:      Option<u8>,
-    pub mem_mib:   Option<u64>,
-    pub kernel:    Option<String>,
-    pub initrd:    Option<String>,
-    pub disk:      Option<String>,
+    pub name:       String,
+    pub cpus:       Option<u8>,
+    pub mem_mib:    Option<u64>,
+    pub kernel:     Option<String>,
+    pub initrd:     Option<String>,
+    pub disk:       Option<String>,
+    pub base_image: Option<String>,
     pub uplink:    Option<String>,
     pub cmdline:   Option<String>,
     pub labels:    Option<HashMap<String, String>>,
@@ -90,7 +94,16 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
     let cpus    = req.cpus.unwrap_or(1);
     let mem_mib = req.mem_mib.unwrap_or(256);
     let kernel  = req.kernel.clone().unwrap_or_else(|| "/var/lib/caiman/kernels/vmlinuz-alpine".into());
-    let disk    = req.disk.clone().or_else(|| Some("/var/lib/caiman/kernels/caiman-rootfs.img".into()));
+    // Create per-VM disk from base image
+    let base = req.base_image.clone()
+        .unwrap_or_else(|| "caiman-base-1.0.img".to_string());
+    let disk = match VmState::create_disk(&id, &base) {
+        Ok(path) => Some(path),
+        Err(e) => {
+            warn!("Failed to clone base image {base}: {e} -- using shared disk");
+            req.disk.clone().or_else(|| Some("/var/lib/caiman/kernels/caiman-rootfs.img".into()))
+        }
+    };
     let initrd  = req.initrd.clone().unwrap_or_else(|| "/var/lib/caiman/kernels/caiman-initrd.img".into());
     let uplink  = req.uplink.clone().unwrap_or_else(detect_uplink);
     let net_mode = req.net_mode.clone().unwrap_or_else(|| "nat".into());
@@ -117,12 +130,26 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
         node_name:     node_name.to_string(),
         kernel:        kernel.clone(),
         initrd:        Some(initrd.clone()),
-        disk:          disk.clone(),
-        disk_id,
+        disk_path:     disk.clone(),
         base_image:    disk.clone(),
+        disk_size_gib: None,
+        volumes:       vec![],
         ip:            None,
         tap:           Some(tap_name.clone()),
         pty:           None,
+        console_log:   None,
+        power_state:   "Booting".to_string(),
+        task_state:    None,
+        flavor:        None,
+        hypervisor:    "caiman-vmm".to_string(),
+        zone: "caiman-zone-1".to_string(),
+        autostart:     false,
+        project_id:    None,
+        user_id:       None,
+        security_groups: vec![],
+        launched_at:   None,
+        terminated_at: None,
+        uuid:          uuid::Uuid::new_v4().to_string(),
         net_mode:      Some(net_mode.clone()),
         mac:           mac.clone(),
         uplink:        uplink.clone(),
@@ -165,7 +192,7 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
     }
 
     // Create PTY for serial console -- gives shell a real TTY
-    let log_path = format!("{STATE_DIR}/{id}.log");
+    let log_path = format!("/var/lib/caiman/vms/{id}/console.log");
     let err_path = format!("{STATE_DIR}/{id}.vmm.log");
     let log_stderr = std::fs::File::create(&err_path)
         .with_context(|| format!("creating vmm log {err_path}"))?;
@@ -198,33 +225,117 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
         let slave_name = unsafe {
             std::ffi::CStr::from_ptr(libc::ptsname(fd)).to_str().unwrap_or("/dev/null").to_string()
         };
-        std::fs::OpenOptions::new().read(true).write(true).open(&slave_name)
+        std::fs::OpenOptions::new().read(true).write(true).custom_flags(libc::O_NOCTTY).open(&slave_name)
             .unwrap_or_else(|_| std::fs::File::create("/dev/null").unwrap())
     };
     let pty_slave2 = pty_slave.try_clone()?;
 
     cmd.stdout(pty_slave).stderr(log_stderr).stdin(pty_slave2).kill_on_drop(false).process_group(0);
+    unsafe {
+        cmd.pre_exec(|| {
+            // Become session leader, detach from controlling terminal
+            libc::setsid();
+            // Ignore SIGHUP from parent
+            libc::signal(libc::SIGHUP, libc::SIG_IGN);
+            // Ignore TTY signals so we don't get stopped on background read/write
+            libc::signal(libc::SIGTTIN, libc::SIG_IGN);
+            libc::signal(libc::SIGTTOU, libc::SIG_IGN);
+            Ok(())
+        })
+    };
 
-    // Save PTY master for log streaming
+    // Console socket bridge -- bidirectional PTY <-> Unix socket
     {
-        let pty_log = format!("{STATE_DIR}/{id}.log");
-        let mut master = pty_master;
-        tokio::spawn(async move {
-            use tokio::io::{AsyncReadExt, AsyncWriteExt};
-            let std_master = unsafe {
-                use std::os::unix::io::FromRawFd;
-                let fd = std::os::unix::io::IntoRawFd::into_raw_fd(master);
-                std::fs::File::from_raw_fd(fd)
-            };
-            let mut async_master = tokio::fs::File::from_std(std_master);
-            let mut log = tokio::fs::OpenOptions::new().create(true).append(true)
-                .open(&pty_log).await.unwrap();
+        use std::os::unix::io::IntoRawFd;
+        let pty_fd = pty_master.into_raw_fd();
+        let sock_path = format!("/var/lib/caiman/vms/{id}/console.sock");
+        let _ = std::fs::remove_file(&sock_path);
+
+        // broadcast: PTY output -> all connected WS clients
+        let (bcast_tx, _bcast_init) = tokio::sync::broadcast::channel::<Vec<u8>>(256);
+        let bcast_tx_reader = bcast_tx.clone();
+
+        // ring buffer: last 64KB for late joiners
+        let ringbuf: Arc<Mutex<std::collections::VecDeque<u8>>> =
+            Arc::new(Mutex::new(std::collections::VecDeque::with_capacity(65536)));
+        let ringbuf_writer = Arc::clone(&ringbuf);
+
+        // mpsc: client keystrokes -> PTY write thread
+        let (write_tx, write_rx) = std::sync::mpsc::channel::<Vec<u8>>();
+
+        // Thread: blocking PTY read -> broadcast + ringbuf
+        std::thread::spawn(move || {
             let mut buf = [0u8; 1024];
             loop {
-                match async_master.read(&mut buf).await {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => { let _ = log.write_all(&buf[..n]).await; }
+                let n = unsafe {
+                    libc::read(pty_fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
+                };
+                if n <= 0 { break; }
+                let chunk = &buf[..n as usize];
+                // Always append to ring buffer regardless of receivers
+                if let Ok(mut rb) = ringbuf_writer.lock() {
+                    for &b in chunk {
+                        if rb.len() >= 65536 { rb.pop_front(); }
+                        rb.push_back(b);
+                    }
                 }
+                // Ignore send errors -- no receivers yet is fine
+                let _ = bcast_tx_reader.send(chunk.to_vec());
+            }
+        });
+
+        // Thread: mpsc -> blocking PTY write
+        std::thread::spawn(move || {
+            for data in write_rx {
+                unsafe {
+                    libc::write(pty_fd, data.as_ptr() as *const libc::c_void, data.len());
+                }
+            }
+        });
+
+        // Task: Unix socket listener -- one slot per WS client
+        tokio::spawn(async move {
+            use tokio::net::UnixListener;
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+            let Ok(listener) = UnixListener::bind(&sock_path) else { return };
+
+            loop {
+                let Ok((stream, _)) = listener.accept().await else { break };
+                let (mut srx, mut stx) = tokio::io::split(stream);
+                let mut brx = bcast_tx.subscribe();
+                let wtx = write_tx.clone();
+                let rb = Arc::clone(&ringbuf);
+
+                // PTY output -> socket (send backlog first, then live)
+                tokio::spawn(async move {
+                    // Drain ring buffer first
+                    let backlog: Vec<u8> = rb.lock()
+                        .map(|r| r.iter().copied().collect())
+                        .unwrap_or_default();
+                    if !backlog.is_empty() {
+                        if stx.write_all(&backlog).await.is_err() { return; }
+                    }
+                    // Then live stream
+                    loop {
+                        match brx.recv().await {
+                            Ok(data) => { if stx.write_all(&data).await.is_err() { break; } }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(_) => break,
+                        }
+                    }
+                });
+
+                // Socket input -> PTY
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 256];
+                    loop {
+                        match srx.read(&mut buf).await {
+                            Ok(0) | Err(_) => break,
+                            Ok(n) => { let _ = wtx.send(buf[..n].to_vec()); }
+                        }
+                    }
+                });
             }
         });
     }
@@ -235,8 +346,10 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
     let pid = child.id().unwrap_or(0);
     info!("VM {} started: pid={} name={} tap={} net={}", id, pid, req.name, tap_name, net_mode);
 
-    state.status     = VmStatus::Running;
+    state.status     = VmStatus::Active;
     state.pid        = Some(pid);
+    state.power_state = "Running".to_string();
+    state.launched_at = Some(Utc::now());
     state.pty        = Some(format!("{STATE_DIR}/{id}.pty"));
     state.started_at = Some(Utc::now());
     // Extract IP from ip_config
@@ -245,6 +358,184 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
             .and_then(|s| s.splitn(2, ':').next())
             .map(|s| s.to_string());
     }
+    state.save()?;
+
+    std::mem::forget(child);
+    Ok(state)
+}
+
+
+/// Restart an existing VM using its saved state (same id, disk, tap, mac)
+pub async fn restart_vm(id: &str, node_name: &str) -> Result<VmState> {
+    let mut state = VmState::load(id)?;
+
+    // Check not already running
+    if let Some(pid) = state.pid {
+        let alive = unsafe { libc::kill(pid as i32, 0) == 0 };
+        if alive {
+            anyhow::bail!("VM {id} is already running (pid={pid})");
+        }
+    }
+
+    let kernel   = state.kernel.clone();
+    let initrd   = state.initrd.clone().unwrap_or_else(|| "/var/lib/caiman/kernels/caiman-initrd.img".into());
+    let disk     = state.disk_path.clone();
+    let tap      = state.tap.clone().unwrap_or_else(|| format!("caim{}", &id[id.len().saturating_sub(8)..]));
+    let uplink   = state.uplink.clone();
+    let net_mode = state.net_mode.clone().unwrap_or_else(|| "nat".into());
+    let cpus     = state.cpus;
+    let mem_mib  = state.mem_mib;
+
+    // Recreate tap if gone
+    let tap_exists = std::path::Path::new(&format!("/sys/class/net/{tap}")).exists();
+    if !tap_exists {
+        let (new_tap, ip_config) = cni_add(id, &net_mode, &uplink).await?;
+        if !ip_config.is_empty() {
+            state.ip = ip_config.splitn(2, '=').nth(1)
+                .and_then(|s| s.splitn(2, ':').next())
+                .map(|s| s.to_string());
+        }
+    }
+
+    let cmdline = format!(
+        "earlycon=uart8250,io,0x3f8,115200n8 console=ttyS0,115200 rw reboot=k panic=1          virtio_mmio.device=0x1000@0xd0010000:6"
+    );
+
+    let mut cmd = Command::new(VMM_BINARY);
+    cmd.arg("--kernel").arg(&kernel)
+        .arg("--mem-mib").arg(mem_mib.to_string())
+        .arg("--cpus").arg(cpus.to_string())
+        .arg("--tap").arg(&tap)
+        .arg("--uplink").arg(&uplink)
+        .arg("--vm-id").arg(id)
+        .arg("--vm-name").arg(&state.name)
+        .arg("--cmdline").arg(&cmdline)
+        .arg("--initrd").arg(&initrd);
+    if let Some(ref d) = disk {
+        cmd.arg("--disk").arg(d);
+    }
+
+    let vm_dir   = format!("/var/lib/caiman/vms/{id}");
+    let log_path = format!("{vm_dir}/console.log");
+    let err_path = format!("{STATE_DIR}/{id}.vmm.log");
+    let log_stderr = std::fs::File::create(&err_path)?;
+
+    let pty_master = std::fs::OpenOptions::new()
+        .read(true).write(true)
+        .open("/dev/ptmx")
+        .context("opening /dev/ptmx")?;
+
+    unsafe {
+        let fd = std::os::unix::io::AsRawFd::as_raw_fd(&pty_master);
+        libc::grantpt(fd);
+        libc::unlockpt(fd);
+        let slave_name = std::ffi::CStr::from_ptr(libc::ptsname(fd)).to_str().unwrap_or("").to_string();
+        std::fs::write(&log_path, format!("PTY:{}
+", slave_name))?;
+        let pty_link = format!("{STATE_DIR}/{id}.pty");
+        let _ = std::fs::remove_file(&pty_link);
+        let _ = std::os::unix::fs::symlink(&slave_name, &pty_link);
+    }
+
+    let pty_slave = {
+        let fd = std::os::unix::io::AsRawFd::as_raw_fd(&pty_master);
+        let slave_name = unsafe {
+            std::ffi::CStr::from_ptr(libc::ptsname(fd)).to_str().unwrap_or("/dev/null").to_string()
+        };
+        std::fs::OpenOptions::new().read(true).write(true).custom_flags(libc::O_NOCTTY).open(&slave_name)
+            .unwrap_or_else(|_| std::fs::File::create("/dev/null").unwrap())
+    };
+    let pty_slave2 = pty_slave.try_clone()?;
+    cmd.stdout(pty_slave).stderr(log_stderr).stdin(pty_slave2).kill_on_drop(false).process_group(0);
+    unsafe {
+        cmd.pre_exec(|| {
+            // Become session leader, detach from controlling terminal
+            libc::setsid();
+            // Ignore SIGHUP from parent
+            libc::signal(libc::SIGHUP, libc::SIG_IGN);
+            // Ignore TTY signals so we don't get stopped on background read/write
+            libc::signal(libc::SIGTTIN, libc::SIG_IGN);
+            libc::signal(libc::SIGTTOU, libc::SIG_IGN);
+            Ok(())
+        })
+    };
+
+    // Console socket bridge
+    {
+        use std::os::unix::io::IntoRawFd;
+        let pty_fd = pty_master.into_raw_fd();
+        let sock_path = format!("{vm_dir}/console.sock");
+        let _ = std::fs::remove_file(&sock_path);
+
+        let (bcast_tx, _) = tokio::sync::broadcast::channel::<Vec<u8>>(256);
+        let bcast_tx_reader = bcast_tx.clone();
+        let ringbuf: Arc<Mutex<std::collections::VecDeque<u8>>> =
+            Arc::new(Mutex::new(std::collections::VecDeque::with_capacity(65536)));
+        let ringbuf_writer = Arc::clone(&ringbuf);
+        let (write_tx, write_rx) = std::sync::mpsc::channel::<Vec<u8>>();
+
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 1024];
+            loop {
+                let n = unsafe { libc::read(pty_fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+                if n <= 0 { break; }
+                let chunk = &buf[..n as usize];
+                if let Ok(mut rb) = ringbuf_writer.lock() {
+                    for &b in chunk { if rb.len() >= 65536 { rb.pop_front(); } rb.push_back(b); }
+                }
+                let _ = bcast_tx_reader.send(chunk.to_vec());
+            }
+        });
+        std::thread::spawn(move || {
+            for data in write_rx {
+                unsafe { libc::write(pty_fd, data.as_ptr() as *const libc::c_void, data.len()); }
+            }
+        });
+        tokio::spawn(async move {
+            use tokio::net::UnixListener;
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let Ok(listener) = UnixListener::bind(&sock_path) else { return };
+            loop {
+                let Ok((stream, _)) = listener.accept().await else { break };
+                let (mut srx, mut stx) = tokio::io::split(stream);
+                let mut brx = bcast_tx.subscribe();
+                let wtx = write_tx.clone();
+                let rb = Arc::clone(&ringbuf);
+                tokio::spawn(async move {
+                    let backlog: Vec<u8> = rb.lock().map(|r| r.iter().copied().collect()).unwrap_or_default();
+                    if !backlog.is_empty() { if stx.write_all(&backlog).await.is_err() { return; } }
+                    loop {
+                        match brx.recv().await {
+                            Ok(data) => { if stx.write_all(&data).await.is_err() { break; } }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(_) => break,
+                        }
+                    }
+                });
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 256];
+                    loop {
+                        match srx.read(&mut buf).await {
+                            Ok(0) | Err(_) => break,
+                            Ok(n) => { let _ = wtx.send(buf[..n].to_vec()); }
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    let child = cmd.spawn().with_context(|| format!("spawning {VMM_BINARY}"))?;
+    let pid = child.id().unwrap_or(0);
+    info!("VM {id} restarted: pid={pid}");
+
+    state.status      = VmStatus::Active;
+    state.pid         = Some(pid);
+    state.power_state = "Running".to_string();
+    state.launched_at = Some(Utc::now());
+    state.started_at  = Some(Utc::now());
+    state.pty         = Some(format!("{STATE_DIR}/{id}.pty"));
+    state.node_name   = node_name.to_string();
     state.save()?;
 
     std::mem::forget(child);
@@ -283,7 +574,7 @@ pub fn stop_vm(state: &mut VmState) -> Result<()> {
         }
         info!("VM {} sent SIGTERM to pid={}", state.id, pid);
     }
-    state.status = VmStatus::Stopped;
+    state.status = VmStatus::ShutOff;
     state.pid    = None;
     state.save()
 }
@@ -294,7 +585,7 @@ pub fn kill_vm(state: &mut VmState) -> Result<()> {
         unsafe { libc::kill(pid as i32, libc::SIGKILL) };
         info!("VM {} sent SIGKILL to pid={}", state.id, pid);
     }
-    state.status = VmStatus::Stopped;
+    state.status = VmStatus::ShutOff;
     state.pid    = None;
     state.save()
 }

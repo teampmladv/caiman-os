@@ -121,28 +121,9 @@ async fn run(args: Args) -> Result<()> {
     println!("-----------------------------------------------------");
     write_vm_state(&args, std::process::id());
 
-    // Put terminal in raw mode so stdin goes directly to serial
-    let _raw = {
-        use std::os::unix::io::AsRawFd;
-        let fd = std::io::stdin().as_raw_fd();
-        let mut termios = unsafe { std::mem::zeroed::<libc::termios>() };
-        unsafe { libc::tcgetattr(fd, &mut termios) };
-        let old = termios;
-        termios.c_lflag &= !(libc::ICANON | libc::ECHO | libc::ISIG);
-        termios.c_iflag &= !(libc::IXON | libc::ICRNL);
-        termios.c_cc[libc::VMIN] = 1;
-        termios.c_cc[libc::VTIME] = 0;
-        unsafe { libc::tcsetattr(fd, libc::TCSANOW, &termios) };
-        struct RestoreTermios { fd: i32, old: libc::termios }
-        impl Drop for RestoreTermios {
-            fn drop(&mut self) {
-                unsafe { libc::tcsetattr(self.fd, libc::TCSANOW, &self.old); }
-            }
-        }
-        RestoreTermios { fd, old }
-    };
-
-    // Forward stdin -> serial RX
+    // -- v1.4: stdin -> serial RX bridge (no termios manipulation)
+    // The host wrapper (API) provides the PTY in raw mode already.
+    // We just read raw bytes from stdin and feed them to the UART.
     {
         let serial_stdin = Arc::clone(&serial);
         let irqfd_stdin  = serial_irqfd.try_clone().context("clone serial irqfd for stdin")?;
@@ -154,18 +135,12 @@ async fn run(args: Args) -> Result<()> {
                     Ok(0) => break,
                     Ok(n) => {
                         for &b in &buf[..n] {
-                            let byte = if b == b'\r' { b'\n' } else { b };
-                            // Local echo
-                            let _ = std::io::stdout().write_all(&[byte]);
-                            let _ = std::io::stdout().flush();
-                            // Inject into VM serial RX -- keep signaling until consumed
                             {
                                 let mut s = serial_stdin.lock().unwrap();
-                                s.rbr = byte;
+                                s.rbr = b;
                                 s.lsr |= 0x01;
-                                s.iir = 0x04; // IIR_RDI -- force RX interrupt
+                                s.iir = 0x04;
                             }
-                            // Inject IRQ multiple times to ensure vCPU wakes
                             for _ in 0..4 {
                                 let _ = irqfd_stdin.write(1);
                                 std::thread::sleep(std::time::Duration::from_millis(1));
