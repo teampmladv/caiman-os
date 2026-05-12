@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Bell, Terminal, Settings, Zap } from 'lucide-react'
 import { useClusterStore } from '../../store/cluster'
+import { UserMenu } from './UserMenu'
 
 const NAV_TABS = [
   { id: 'overview',  label: 'Overview' },
@@ -140,6 +141,7 @@ export function TopNav({ activeTab, onTabChange }: Props) {
           )}
         </button>
 
+        <UserMenu />
         <div className="font-mono text-[9px] text-caiman-dim w-14 text-right tabular-nums">
           {time}
         </div>

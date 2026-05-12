@@ -7,8 +7,8 @@ import { CommandBar }     from './components/ai/CommandBar'
 import { VmDetailPanel }  from './components/vm/VmDetailPanel'
 import { NotificationStack } from './components/ui/ActivityFeed'
 import { useClusterStore }   from './store/cluster'
-import { useMockWebSocket }  from './hooks/useWebSocket'
-import { MOCK_SNAPSHOT, MOCK_DRS_RECS } from './api/client'
+import { fetchVms, fetchNodes } from './api/client'
+import { buildSnapshot } from './api/transform'
 
 // Framework
 import {
@@ -24,6 +24,7 @@ const DrsPage      = React.lazy(() => import('./pages/DRS'))
 const MicrosegPage = React.lazy(() => import('./pages/Microseg'))
 const StoragePage  = React.lazy(() => import('./pages/Storage'))
 const GpuPage      = React.lazy(() => import('./pages/GPU'))
+const LoginPage   = React.lazy(() => import('./pages/Login'))
 
 const qc = new QueryClient({
   defaultOptions: { queries: { staleTime: 10_000, retry: 1 } },
@@ -37,11 +38,22 @@ function AppInner() {
   }))
 
   useEffect(() => {
-    setSnapshot(MOCK_SNAPSHOT)
-    MOCK_DRS_RECS.forEach(r => addNotification('warning', 'DRS', r.reason))
+    const load = async () => {
+      try {
+        const [vms, nodes] = await Promise.all([
+          fetchVms().catch(() => []),
+          fetchNodes().catch(() => []),
+        ])
+        setSnapshot(buildSnapshot(vms, nodes))
+      } catch (e) {
+        console.error('[caiman] failed to load cluster state', e)
+      }
+    }
+    load()
+    const interval = setInterval(load, 5000)
+    return () => clearInterval(interval)
   }, [])
 
-  useMockWebSocket()
   useContextShortcuts()   // ← global keyboard shortcuts via framework
 
   const PAGE: Record<string, React.ReactNode> = {
@@ -103,9 +115,27 @@ function AppInner() {
 }
 
 export default function App() {
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('caiman_token'))
+
+  useEffect(() => {
+    const onLogout = () => setToken(null)
+    window.addEventListener('caiman:logout', onLogout)
+    return () => window.removeEventListener('caiman:logout', onLogout)
+  }, [])
+
+  if (!token) {
+    return (
+      <QueryClientProvider client={qc}>
+        <React.Suspense fallback={<div className="min-h-screen bg-caiman-bg" />}>
+          <LoginPage onSuccess={(t) => setToken(t)} />
+        </React.Suspense>
+      </QueryClientProvider>
+    )
+  }
+
   return (
     <QueryClientProvider client={qc}>
-      <ActionBusProvider>          {/* ← wraps everything */}
+      <ActionBusProvider>
         <AppInner />
       </ActionBusProvider>
     </QueryClientProvider>

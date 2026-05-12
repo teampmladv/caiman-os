@@ -3,6 +3,8 @@ import { motion } from 'framer-motion'
 import { useClusterStore } from '../store/cluster'
 import { KpiCard } from '../components/dashboard/KpiCard'
 import { NodeCard } from '../components/nodes/NodeCard'
+import { CreateVmModal } from '../components/vm/CreateVmModal'
+import { ImportModal } from '../components/vm/ImportModal'
 import { VmRow } from '../components/vm/VmRow'
 import { DrsPanel } from '../components/drs/DrsPanel'
 import { MicrosegPanel } from '../components/microseg/MicrosegPanel'
@@ -15,6 +17,9 @@ const FADE = (i: number) => ({
 })
 
 export default function OverviewPage() {
+  const [createOpen, setCreateOpen] = React.useState(false)
+  const [importOpen, setImportOpen] = React.useState(false)
+
   const { snapshot, drsRecs, auditEvents, selectVm } = useClusterStore(s => ({
     snapshot:    s.snapshot,
     drsRecs:     s.drsRecs,
@@ -106,7 +111,10 @@ export default function OverviewPage() {
                 <span className="text-[9px] text-caiman-bright">
                   {runningVms.length} running
                 </span>
-                <button className="btn-primary text-[8px] px-2 py-0.5">
+                <button className="btn text-[8px] px-2 py-0.5 border-caiman-border hover:border-caiman-green" onClick={() => setImportOpen(true)}>
+                  ↓ Import
+                </button>
+                <button className="btn-primary text-[8px] px-2 py-0.5" onClick={() => setCreateOpen(true)}>
                   + New VM
                 </button>
               </div>
@@ -137,6 +145,8 @@ export default function OverviewPage() {
           <ActivityFeed />
         </motion.div>
       </div>
+      {createOpen && <CreateVmModal onClose={() => setCreateOpen(false)} />}
+      {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}
     </div>
   )
 }

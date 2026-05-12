@@ -5,11 +5,11 @@ import { useClusterStore } from '../../store/cluster'
 import { ArrowRight, Zap, Server, Network, ShieldCheck, HardDrive, RefreshCw, Cpu } from 'lucide-react'
 
 const SUGGESTIONS = [
-  { icon: RefreshCw,    cat: 'DRS',      text: 'Migrate vm-ml-train-03 to node-03 (score 0.82)' },
+  { icon: RefreshCw,    cat: 'DRS',      text: 'Suggest a migration for the most loaded VM' },
   { icon: ShieldCheck,  cat: 'Microseg', text: 'Show XDP deny events in the last 60 seconds' },
-  { icon: Cpu,          cat: 'GPU',      text: 'Allocate MIG 3g.40gb on node-01 for a new VM' },
+  { icon: Cpu,          cat: 'GPU',      text: 'Show GPU availability across the cluster' },
   { icon: HardDrive,    cat: 'Storage',  text: 'Create 500 GiB VSAN volume with FTT=1' },
-  { icon: Server,       cat: 'VMs',      text: 'Why is node-02 overloaded? Suggest a fix.' },
+  { icon: Server,       cat: 'VMs',      text: 'Why is the cluster under load? Suggest a fix' },
   { icon: Network,      cat: 'Network',  text: 'Show XDP throughput breakdown by VM' },
   { icon: RefreshCw,    cat: 'DRS',      text: 'Execute all pending DRS migration recommendations' },
   { icon: ShieldCheck,  cat: 'Microseg', text: 'Create policy: allow backend → postgres on :5432' },

@@ -9,13 +9,33 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
+// Token-based auth: read from localStorage on each request, no auto-login
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('caiman_token')
+  if (token) config.headers['Authorization'] = `Bearer ${token}`
+  return config
+})
+
 api.interceptors.response.use(
   r => r,
   err => {
-    console.error('[caiman-api]', err.message)
+    if (err.response?.status === 401) {
+      localStorage.removeItem('caiman_token')
+      // Trigger full reload to show login page
+      if (window.location.pathname !== '/login') {
+        window.dispatchEvent(new Event('caiman:logout'))
+      }
+    }
     return Promise.reject(err)
   }
 )
+
+export function logout() {
+  localStorage.removeItem('caiman_token')
+  localStorage.removeItem('caiman_user')
+  localStorage.removeItem('caiman_role')
+  window.dispatchEvent(new Event('caiman:logout'))
+}
 
 // ── API functions ─────────────────────────────────────────────────────────
 
@@ -27,6 +47,7 @@ export const executeMigration = (vmId: string, toNode: string) =>
   api.post(`/api/vms/${vmId}/migrate`, { toNode })
 export const startVm          = (vmId: string) => api.post(`/api/vms/${vmId}/start`)
 export const stopVm           = (vmId: string) => api.post(`/api/vms/${vmId}/stop`)
+export const deleteVm          = (vmId: string) => api.delete(`/api/vms/${vmId}`)
 export const getSerialLogs    = (vmId: string, lines = 100) =>
   api.get<string[]>(`/api/vms/${vmId}/console?lines=${lines}`).then(r => r.data)
 export const fetchXdpStats    = () => api.get('/api/xdp/stats').then(r => r.data)
