@@ -16,6 +16,37 @@ use super::state::{VmState, VmStatus, STATE_DIR};
 pub const VMM_BINARY: &str = "caiman-vmm";
 pub const CNI_BINARY: &str = "caiman-cni";
 
+/// Build the kernel cmdline for a managed VM.
+///
+/// Preserves the existing boot model per call site:
+/// - root_disk: add root=/dev/vda rootfstype=ext4 (disk-boot). initrd-based VMs pass false.
+/// - has_disk:  announce the virtio-blk device (:6).
+/// - ip_config: NAT config from CNI; empty string when not applicable.
+///
+/// virtio-net (:5) is always announced: every API-managed VM gets a CNI tap.
+fn build_vm_cmdline(root_disk: bool, has_disk: bool, ip_config: &str) -> String {
+    let mut p: Vec<String> = vec![
+        "earlycon=uart8250,io,0x3f8,115200n8".to_string(),
+        "console=ttyS0,115200".to_string(),
+    ];
+    if root_disk {
+        p.push("root=/dev/vda".to_string());
+        p.push("rootfstype=ext4".to_string());
+    }
+    p.push("rw".to_string());
+    p.push("reboot=k".to_string());
+    p.push("panic=1".to_string());
+    p.push("virtio_mmio.device=0x1000@0xd0000000:5".to_string()); // virtio-net
+    if has_disk {
+        p.push("virtio_mmio.device=0x1000@0xd0010000:6".to_string()); // virtio-blk
+    }
+    if !ip_config.is_empty() {
+        p.push(ip_config.to_string());
+        p.push("nameserver=1.1.1.1".to_string());
+    }
+    p.join(" ")
+}
+
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateVmRequest {
@@ -165,14 +196,15 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
     state.save()?;
 
     // 3. Build cmdline -- inject IP config if CNI provided it
+    // Use caller-provided cmdline as-is; otherwise derive it from the VM's devices.
+    // Preserves prior behavior: networked VMs are initrd-based (no root=), the
+    // diskless-network fallback boots root=/dev/vda directly. virtio-net is now
+    // always announced so the guest can see its CNI-provided interface.
     let cmdline = if let Some(ref cl) = req.cmdline {
         cl.clone()
-    } else if !ip_config.is_empty() {
-        format!(
-            "earlycon=uart8250,io,0x3f8,115200n8 console=ttyS0,115200 rw reboot=k panic=1              virtio_mmio.device=0x1000@0xd0010000:6              {ip_config} nameserver=1.1.1.1"
-        )
     } else {
-        "earlycon=uart8250,io,0x3f8,115200n8 console=ttyS0,115200 root=/dev/vda rootfstype=ext4 rw reboot=k panic=1 virtio_mmio.device=0x1000@0xd0010000:6".to_string()
+        let root_disk = ip_config.is_empty();
+        build_vm_cmdline(root_disk, disk.is_some(), &ip_config)
     };
 
     // 4. Spawn caiman-vmm with correct TAP
@@ -401,8 +433,10 @@ pub async fn restart_vm(id: &str, node_name: &str) -> Result<VmState> {
 
     // Recreate tap if gone
     let tap_exists = std::path::Path::new(&format!("/sys/class/net/{tap}")).exists();
+    let mut ip_config = String::new();
     if !tap_exists {
-        let (new_tap, ip_config) = cni_add(id, &net_mode, &uplink).await?;
+        let (_new_tap, ipc) = cni_add(id, &net_mode, &uplink).await?;
+        ip_config = ipc;
         if !ip_config.is_empty() {
             state.ip = ip_config.splitn(2, '=').nth(1)
                 .and_then(|s| s.splitn(2, ':').next())
@@ -410,9 +444,9 @@ pub async fn restart_vm(id: &str, node_name: &str) -> Result<VmState> {
         }
     }
 
-    let cmdline = format!(
-        "earlycon=uart8250,io,0x3f8,115200n8 console=ttyS0,115200 rw reboot=k panic=1          virtio_mmio.device=0x1000@0xd0010000:6"
-    );
+    // initrd-based restart: no root= (initrd mounts /dev/vda); now announces
+    // virtio-net (:5) and carries ip_config when the tap was recreated.
+    let cmdline = build_vm_cmdline(false, disk.is_some(), &ip_config);
 
     let mut cmd = Command::new(VMM_BINARY);
     cmd.arg("--kernel").arg(&kernel)
