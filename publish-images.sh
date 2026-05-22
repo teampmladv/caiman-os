@@ -6,7 +6,7 @@ BRT='\033[38;2;118;255;3m'; GRN='\033[38;2;76;175;80m'
 DIM='\033[38;2;74;124;74m'; AMB='\033[38;2;255;179;0m'
 RED='\033[38;2;239;83;80m'; NC='\033[0m'
 
-REGISTRY="ghcr.io/teampmladv"
+REGISTRY="ghcr.io/Capablanca-Digital"
 VERSION="${1:-0.1.0}"
 PUSH="${2:-}"
 RUST_CRATES=(caiman-storage caiman-gpu caiman-vmm caiman-api caiman-cni caiman-drs caiman-bts caiman-mcp)
@@ -127,7 +127,7 @@ echo -e "  ${GRN}✓${NC} $(docker --version)"
 if [[ "$PUSH" == "--push" ]]; then
     [[ -z "${GITHUB_TOKEN:-}" ]] && \
         read -srp "$(echo -e "${AMB}GitHub PAT (packages:write): ${NC}")" GITHUB_TOKEN && echo
-    echo "$GITHUB_TOKEN" | docker login ghcr.io -u teampmladv --password-stdin
+    echo "$GITHUB_TOKEN" | docker login ghcr.io -u "${GITHUB_USER:?set GITHUB_USER to your GitHub username}" --password-stdin
     echo -e "  ${GRN}✓${NC} Login en ghcr.io OK"
 fi
 
