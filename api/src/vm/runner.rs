@@ -340,7 +340,7 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
         });
     }
 
-    let child = cmd.spawn()
+    let mut child = cmd.spawn()
         .with_context(|| format!("spawning {VMM_BINARY}"))?;
 
     let pid = child.id().unwrap_or(0);
@@ -360,7 +360,20 @@ pub async fn spawn_vm(req: CreateVmRequest, node_name: &str) -> Result<VmState> 
     }
     state.save()?;
 
-    std::mem::forget(child);
+    // Reap the child to avoid zombies and reconcile state on exit.
+    let reap_id = id.to_string();
+    tokio::spawn(async move {
+        match child.wait().await {
+            Ok(s)  => info!("VM {reap_id} process exited: {s}"),
+            Err(e) => warn!("VM {reap_id} wait error: {e}"),
+        }
+        if let Ok(mut st) = VmState::load(&reap_id) {
+            st.status      = VmStatus::ShutOff;
+            st.power_state = "Stopped".to_string();
+            st.pid         = None;
+            let _ = st.save();
+        }
+    });
     Ok(state)
 }
 
@@ -525,7 +538,7 @@ pub async fn restart_vm(id: &str, node_name: &str) -> Result<VmState> {
         });
     }
 
-    let child = cmd.spawn().with_context(|| format!("spawning {VMM_BINARY}"))?;
+    let mut child = cmd.spawn().with_context(|| format!("spawning {VMM_BINARY}"))?;
     let pid = child.id().unwrap_or(0);
     info!("VM {id} restarted: pid={pid}");
 
@@ -538,7 +551,20 @@ pub async fn restart_vm(id: &str, node_name: &str) -> Result<VmState> {
     state.node_name   = node_name.to_string();
     state.save()?;
 
-    std::mem::forget(child);
+    // Reap the child to avoid zombies and reconcile state on exit.
+    let reap_id = id.to_string();
+    tokio::spawn(async move {
+        match child.wait().await {
+            Ok(s)  => info!("VM {reap_id} process exited: {s}"),
+            Err(e) => warn!("VM {reap_id} wait error: {e}"),
+        }
+        if let Ok(mut st) = VmState::load(&reap_id) {
+            st.status      = VmStatus::ShutOff;
+            st.power_state = "Stopped".to_string();
+            st.pid         = None;
+            let _ = st.save();
+        }
+    });
     Ok(state)
 }
 
