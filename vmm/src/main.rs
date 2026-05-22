@@ -9,6 +9,7 @@ use clap::Parser;
 use kvm_ioctls::Kvm;
 use tracing::info;
 
+mod cmdline;
 mod device;
 mod ebpf;
 mod kvm;
@@ -26,11 +27,8 @@ struct Args {
     #[arg(long)] initrd:  Option<String>,
     #[arg(long)] disk:    Option<String>,
 
-    #[arg(long, default_value =
-        "console=ttyS0,115200 reboot=k panic=1 nomodules \
-         virtio_mmio.device=0x1000@0xd0000000:5 \
-         virtio_mmio.device=0x1000@0xd0010000:6")]
-    cmdline: String,
+    #[arg(long)]
+    cmdline: Option<String>,
 
     #[arg(long, default_value_t = 256)] mem_mib: u64,
     #[arg(long, default_value_t = 1)]   cpus:    u8,
@@ -59,11 +57,25 @@ async fn run(args: Args) -> Result<()> {
     // -- 2. VM (creates KVM fd + VM fd + registers memory) -----------------
     let vm = kvm::vm::Vm::new(&*mem)?;
 
+    // Build cmdline: explicit --cmdline wins; otherwise derive from devices.
+    let effective_cmdline = match args.cmdline.clone() {
+        Some(c) => c,
+        None => cmdline::build_cmdline(&cmdline::CmdlineOpts {
+            root_device: if args.disk.is_some() { Some("/dev/vda") } else { None },
+            rootfstype:  if args.disk.is_some() { Some("ext4") } else { None },
+            has_net:     true,
+            has_disk:    args.disk.is_some(),
+            ip_config:   None,
+            extra:       None,
+        }),
+    };
+    info!("cmdline: {effective_cmdline}");
+
     // -- 3. Load kernel ----------------------------------------------------
     let lr = kvm::loader::load_bzimage(
         &*mem,
         std::path::Path::new(&args.kernel),
-        &args.cmdline,
+        &effective_cmdline,
         args.initrd.as_deref().map(std::path::Path::new),
         args.mem_mib,
     )?;
