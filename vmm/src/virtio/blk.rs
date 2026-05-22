@@ -10,7 +10,7 @@ use std::thread;
 use anyhow::{Context, Result};
 use vmm_sys_util::eventfd::EventFd;
 use kvm_ioctls::VmFd;
-use tracing::{debug, info, warn};
+use tracing::{info, trace, warn};
 
 use crate::kvm::memory::GuestMemory;
 use super::queue::{Virtqueue, VIRTQ_DESC_F_WRITE};
@@ -115,7 +115,7 @@ impl BlkState {
             REG_QUEUE_USED_LO  => self.queue.set_used_ring(val, 0),
             REG_QUEUE_USED_HI  => self.queue.set_used_ring(0, val),
             // Guest kicked the device -- wake up dataplane
-            REG_QUEUE_NOTIFY   => { tracing::info!("BLK QUEUE_NOTIFY kick"); let _ = kick.write(1); }
+            REG_QUEUE_NOTIFY   => { tracing::trace!("BLK QUEUE_NOTIFY kick"); let _ = kick.write(1); }
             _                  => {}
         }
     }
@@ -196,21 +196,21 @@ fn blk_dataplane(
     loop {
         // Block until guest kicks us via QUEUE_NOTIFY -- no busy polling
         kickfd.read().ok();
-        tracing::info!("BLK dataplane woke up -- processing queue");
+        tracing::trace!("BLK dataplane woke up -- processing queue");
 
         // Process all available requests in the queue
         loop {
             let (head, chain) = {
                 let mut st = state.lock().unwrap();
-                tracing::info!("BLK queue ready={} desc={:#x} avail={:#x}", st.queue.ready, st.queue.desc_table, st.queue.avail_ring);
+                tracing::trace!("BLK queue ready={} desc={:#x} avail={:#x}", st.queue.ready, st.queue.desc_table, st.queue.avail_ring);
                 if !st.queue.ready || st.queue.avail_ring == 0 { break; }
                 let Some(head) = st.queue.next_avail(&mem) else {
-                    tracing::info!("BLK no requests available");
+                    tracing::trace!("BLK no requests available");
                     break;
                 };
-                tracing::info!("BLK processing head={head}");
+                tracing::trace!("BLK processing head={head}");
                 let chain = st.queue.read_chain(&mem, head);
-                tracing::info!("BLK chain len={}", chain.len());
+                tracing::trace!("BLK chain len={}", chain.len());
                 (head, chain)
             };
 
@@ -243,7 +243,7 @@ fn blk_dataplane(
                     if is_dev_write {
                         let mut buf = vec![0u8; data_desc.len as usize];
                         match file.read_at(&mut buf, offset) {
-                            Ok(_) => { let _ = mem.write_slice(&buf, data_desc.addr); debug!("blk READ  sector={sector} len={}", buf.len()); S_OK }
+                            Ok(_) => { let _ = mem.write_slice(&buf, data_desc.addr); trace!("blk READ  sector={sector} len={}", buf.len()); S_OK }
                             Err(e) => { warn!("blk read err: {e}"); S_IOERR }
                         }
                     } else { S_IOERR }
@@ -252,7 +252,7 @@ fn blk_dataplane(
                     if !read_only {
                         match mem.read_slice(data_desc.addr, data_desc.len as usize) {
                             Ok(buf) => match file.write_at(&buf, offset) {
-                                Ok(_) => { debug!("blk WRITE sector={sector} len={}", buf.len()); S_OK }
+                                Ok(_) => { trace!("blk WRITE sector={sector} len={}", buf.len()); S_OK }
                                 Err(e) => { warn!("blk write err: {e}"); S_IOERR }
                             },
                             Err(_) => S_IOERR,
@@ -277,7 +277,7 @@ fn blk_dataplane(
                 st.queue.add_used(&mem, head, used_len);
                 st.irq_status |= 0x1;
             }
-            tracing::info!("BLK IRQ injected status={status}");
+            tracing::trace!("BLK IRQ injected status={status}");
             let _ = irqfd.write(1);
         }
     }

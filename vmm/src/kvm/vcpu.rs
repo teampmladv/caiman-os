@@ -135,7 +135,7 @@ fn handle_io(id: u64, run: &KvmRunPtr, serial: &Arc<Mutex<Serial>>) {
 
 fn handle_mmio_read(id: u64, addr: u64, data: &mut [u8], vnet: &Arc<Mutex<NetState>>, vblk: &Option<Arc<Mutex<BlkState>>>) {
     if addr >= VIRTIO_BLK_MMIO_BASE && addr < VIRTIO_BLK_MMIO_BASE + VIRTIO_BLK_MMIO_SIZE {
-        tracing::info!("BLK MMIO READ addr={:#x} offset={:#x}", addr, addr - VIRTIO_BLK_MMIO_BASE);
+        tracing::trace!("BLK MMIO READ addr={:#x} offset={:#x}", addr, addr - VIRTIO_BLK_MMIO_BASE);
         if let Some(blk) = vblk.as_ref() {
             let val = blk.lock().unwrap().mmio_read(addr - VIRTIO_BLK_MMIO_BASE);
             let bytes = val.to_le_bytes();

@@ -1,6 +1,6 @@
 //! caiman-vmm v0.6.0 -- KVM hypervisor without QEMU
 //!
-//! v0.6.0 adds: virtio-blk wired -- disco funcional dentro del guest
+//! v0.6.0: virtio-blk + dynamic cmdline -- boots Debian/Alpine guests
 
 use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
@@ -131,7 +131,7 @@ async fn run(args: Args) -> Result<()> {
 
     info!("VM running:");
     println!("-----------------------------------------------------");
-    write_vm_state(&args, std::process::id());
+    write_vm_state(&args, std::process::id(), &mac);
 
     // -- v1.4: stdin -> serial RX bridge (no termios manipulation)
     // The host wrapper (API) provides the PTY in raw mode already.
@@ -184,7 +184,7 @@ pub fn fmt_mac(mac: &[u8; 6]) -> String {
     mac.map(|b| format!("{b:02x}")).join(":")
 }
 
-fn write_vm_state(args: &Args, pid: u32) {
+fn write_vm_state(args: &Args, pid: u32, mac: &[u8; 6]) {
     let state_dir = "/var/run/caiman";
     let _ = std::fs::create_dir_all(state_dir);
     let now = chrono::Utc::now().to_rfc3339();
@@ -198,7 +198,7 @@ fn write_vm_state(args: &Args, pid: u32) {
         "nodeName":    hostname::get().unwrap_or_default().to_string_lossy().to_string(),
         "kernel":      args.kernel,
         "disk":        args.disk,
-        "mac":         "02:ca:1m:an:00:01",
+        "mac":         fmt_mac(mac),
         "uplink":      "eth0",
         "labels":      {},
         "createdAt":   now,
