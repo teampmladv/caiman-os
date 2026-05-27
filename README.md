@@ -2,7 +2,7 @@
 
 **Open-source hyperconverged infrastructure without QEMU.**
 
-[![CI](https://github.com/teampmladv/caiman-os/actions/workflows/ci.yml/badge.svg)](https://github.com/teampmladv/caiman-os/actions)
+[![CI](https://github.com/Capablanca-Digital/caiman-os/actions/workflows/ci.yml/badge.svg)](https://github.com/Capablanca-Digital/caiman-os/actions)
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 [![License](https://img.shields.io/badge/license-Apache%202.0-22c55e)](LICENSE)
 [![Demo](https://img.shields.io/badge/demo-live-22c55e)](https://caimanos.com)
@@ -172,16 +172,26 @@ open http://localhost:3000
 
 ## Roadmap
 
-- [x] **v0.1–v0.6** · KVM VMM, virtio-net / blk, REST API, console
-- [x] **v0.7** · Web UI with interactive xterm console
-- [x] **v0.8** · Import wizard (Proxmox / vSphere / oVirt / Nutanix / Oracle / OpenStack / Harvester / libvirt / AWS)
-- [x] **v0.9 (current)** · Authentication, VM lifecycle, single-node production-ready
-- [ ] **v1.0** · LVM thin-pool local storage with snapshots; PAM auth; ISO rebuild
-- [ ] **v1.1** · Cluster federation (3+ nodes, gossip + Raft consensus)
-- [ ] **v1.2** · Caimán Storage (vSAN-style distributed block storage)
-- [ ] **v1.3** · Live migration end-to-end (pre-copy, < 1s blackout)
-- [ ] **v1.4** · HA / auto-failover · DRS active across nodes
-- [ ] **v1.5** · XDP networking finalized · micro-segmentation enforcing
+The full, current roadmap is in [ROADMAP.md](./ROADMAP.md) — the single
+source of truth. Summary below.
+
+**Done**
+- [x] KVM VMM without QEMU; virtio-blk / virtio-net / serial console
+- [x] REST API + JWT + WebSocket; single-node VM lifecycle
+- [x] React dashboard with interactive console
+- [x] Import wizard — discovery against 9 sources (disk conversion in progress)
+
+**Next**
+- [ ] **Phase 1** · Solidify the single-node core — boot latency, virtio-net in default images, PAM auth, LVM thin-pool storage with snapshots, ISO rebuild
+- [ ] **Phase 2** · Caimán Bridge — cold import for Proxmox / libvirt (finish disk-conversion data path)
+- [ ] **Phase 3** · Caimán Bridge — cold import for vSphere, then Nutanix / OpenStack / Harvester
+- [ ] **Phase 4** · Cluster federation, distributed storage, live migration, HA / auto-failover
+- [ ] **Phase 5** · Sovereign runtime — identity (SPID / CIE / eIDAS), audit logging, portability
+- [ ] **Phase 6** · Self-service deploy (PaaS)
+
+XDP networking, micro-segmentation enforcement, and MCP / AI integration are
+tracked but off the critical path.
+
 - [ ] **v2.0** · First stable release · production claims with measured benchmarks
 
 ---
@@ -195,7 +205,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md). Start by reading the relevant
 component README to understand current state vs. designed state.
 
 ```bash
-git clone https://github.com/teampmladv/caiman-os
+git clone https://github.com/Capablanca-Digital/caiman-os
 cargo build --workspace
 cd ui && npm install && npm run dev
 ```
@@ -210,4 +220,4 @@ Apache 2.0 — see [LICENSE](./LICENSE)
 
 **Named after the Cuban crocodile 🐊**
 
-[caimanos.com](https://caimanos.com) · [GitHub](https://github.com/teampmladv/caiman-os)
+[caimanos.com](https://caimanos.com) · [GitHub](https://github.com/Capablanca-Digital/caiman-os)
