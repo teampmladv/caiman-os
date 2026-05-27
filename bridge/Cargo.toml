@@ -1,0 +1,8 @@
+[package]
+name = "caiman-bridge"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+russh = "0.61.1"
+tokio = { workspace = true, features = ["fs", "io-util"] }
