@@ -16,6 +16,7 @@ use vmm_sys_util::eventfd::EventFd;
 use tracing::{debug, info, warn};
 
 use crate::device::serial::{Serial, SERIAL_BASE};
+use crate::device::pci::PciHostBridge;
 use crate::virtio::net::{NetState, VIRTIO_NET_MMIO_BASE, VIRTIO_NET_MMIO_SIZE};
 use crate::virtio::blk::{BlkState, VIRTIO_BLK_MMIO_BASE, VIRTIO_BLK_MMIO_SIZE};
 use super::{loader::KernelLoadResult, memory::GuestMemory, vm::Vm};
@@ -70,22 +71,22 @@ impl Vcpu {
         configure_sregs(&fd, mem)?;
         Ok(Self { id, fd, run })
     }
-    pub fn run(mut self, serial: Arc<Mutex<Serial>>, vnet: Arc<Mutex<NetState>>, vblk: Option<Arc<Mutex<BlkState>>>, blk_kick: Option<EventFd>) -> JoinHandle<()> {
+    pub fn run(mut self, serial: Arc<Mutex<Serial>>, vnet: Arc<Mutex<NetState>>, vblk: Option<Arc<Mutex<BlkState>>>, blk_kick: Option<EventFd>, pci: Arc<Mutex<PciHostBridge>>) -> JoinHandle<()> {
         thread::Builder::new()
             .name(format!("vcpu-{}", self.id))
-            .spawn(move || run_loop(self.id, &mut self.fd, &self.run, serial, vnet, vblk, blk_kick))
+            .spawn(move || run_loop(self.id, &mut self.fd, &self.run, serial, vnet, vblk, blk_kick, pci))
             .expect("spawning vCPU thread")
     }
-}
 
-fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>>, vnet: Arc<Mutex<NetState>>, vblk: Option<Arc<Mutex<BlkState>>>, blk_kick: Option<EventFd>) {
+}
+fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>>, vnet: Arc<Mutex<NetState>>, vblk: Option<Arc<Mutex<BlkState>>>, blk_kick: Option<EventFd>, pci: Arc<Mutex<PciHostBridge>>) {
     info!("vCPU {id} entering run loop");
     loop {
         match fd.run() {
             Ok(exit) => {
                 match exit {
-                    VcpuExit::IoIn(port, data)  => handle_io_in(id, port, data, &serial),
-                    VcpuExit::IoOut(port, data) => handle_io_out(id, port, data, &serial),
+                    VcpuExit::IoIn(port, data)  => handle_io_in(id, port, data, &serial, &pci),
+                    VcpuExit::IoOut(port, data) => handle_io_out(id, port, data, &serial, &pci),
                     VcpuExit::MmioRead(addr, data) => handle_mmio_read(id, addr, data, &vnet, &vblk),
                     VcpuExit::MmioWrite(addr, data) => handle_mmio_write(id, addr, data, &serial, &vnet, &vblk, &blk_kick),
                     VcpuExit::Hlt => { debug!("vCPU {id}: HLT"); std::thread::sleep(std::time::Duration::from_micros(100)); }
@@ -104,7 +105,11 @@ fn run_loop(id: u64, fd: &mut VcpuFd, run: &KvmRunPtr, serial: Arc<Mutex<Serial>
 
 const KVM_IO_OUT: u8 = 1;
 
-fn handle_io_out(id: u64, port: u16, data: &[u8], serial: &Arc<Mutex<Serial>>) {
+fn handle_io_out(id: u64, port: u16, data: &[u8], serial: &Arc<Mutex<Serial>>, pci: &Arc<Mutex<PciHostBridge>>) {
+    if (0xCF8..=0xCFF).contains(&port) {
+        pci.lock().unwrap().write_port(port, data);
+        return;
+    }
     if port >= SERIAL_BASE && port < SERIAL_BASE + 8 {
         serial.lock().unwrap().write_port(port, data[0]);
         return;
@@ -116,7 +121,11 @@ fn handle_io_out(id: u64, port: u16, data: &[u8], serial: &Arc<Mutex<Serial>>) {
     debug!("vCPU {id}: unhandled IO OUT port={port:#x}");
 }
 
-fn handle_io_in(id: u64, port: u16, data: &mut [u8], serial: &Arc<Mutex<Serial>>) {
+fn handle_io_in(id: u64, port: u16, data: &mut [u8], serial: &Arc<Mutex<Serial>>, pci: &Arc<Mutex<PciHostBridge>>) {
+    if (0xCF8..=0xCFF).contains(&port) {
+        pci.lock().unwrap().read_port(port, data);
+        return;
+    }
     if port >= SERIAL_BASE && port < SERIAL_BASE + 8 {
         let val = serial.lock().unwrap().read_port(port);
         for b in data.iter_mut() { *b = val; }
